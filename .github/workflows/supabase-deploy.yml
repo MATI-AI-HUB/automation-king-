@@ -1,20 +1,19 @@
-name: Deploy Supabase Functions
+# Intentionally disabled.
+# Native GitHub → Vercel Hobby integration (matiailearninghub-3927) already
+# deploys the frontend. Duplicate CLI deploys with a second Gmail / token
+# block the Hobby account. Edge functions are deployed only from
+# supabase-functions-deploy.yml against the already-linked project
+# fqqdpngmftoddffvdukn.
+name: Deploy Supabase Functions (disabled)
+
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
+
 jobs:
-  deploy:
+  skip:
     runs-on: ubuntu-latest
-    env:
-      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
-      PROJECT_ID: ${{ secrets.SUPABASE_PROJECT_ID || secrets.SUPABASE_PROJECT_REF || secrets.PROJECT_ID }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: supabase/setup-cli@v1
-        with:
-          version: latest
-      - name: Deploy all Edge Functions
+      - name: Skip duplicate deploy
         run: |
-          if [ -z "$PROJECT_ID" ]; then echo "PROJECT_ID empty - check secret name"; exit 1; fi
-          supabase functions deploy --project-ref $PROJECT_ID --no-verify-jwt
+          echo "Use supabase-functions-deploy.yml. Do not deploy with a second Vercel/Supabase identity."
+          exit 0

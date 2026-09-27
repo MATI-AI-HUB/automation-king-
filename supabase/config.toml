@@ -1,0 +1,25 @@
+project_id = "fqqdpngmftoddffvdukn"
+
+[api]
+enabled = true
+
+[functions.getApiKey]
+verify_jwt = true
+
+[functions.paywall]
+verify_jwt = true
+
+[functions.two-factor]
+verify_jwt = true
+
+[functions.news-pipeline]
+verify_jwt = false
+
+[functions.news-writer]
+verify_jwt = false
+
+[functions.ai-process-report]
+verify_jwt = false
+
+[functions.backup-cron]
+verify_jwt = false

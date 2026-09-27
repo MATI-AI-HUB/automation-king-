@@ -1,7 +1,7 @@
 import { requireAdmin } from '@/lib/server/require-admin';
 import { redirect } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@supabase/supabase-js';
+import { tryCreateAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 export const metadata = {
@@ -28,11 +28,8 @@ type QueueItem = {
 };
 
 async function getQueue() {
-  const sb = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
+  const sb = tryCreateAdminClient();
+  if (!sb) return [] as QueueItem[];
 
   const { data: queue } = await sb
     .from('verification_queue')

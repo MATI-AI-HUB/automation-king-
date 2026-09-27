@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import { requireAdmin } from '@/lib/server/require-admin';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
@@ -16,11 +16,7 @@ export async function GET(req: Request) {
   const limit = Math.min(parseInt(url.searchParams.get('limit') || '50'), 100);
   const offset = parseInt(url.searchParams.get('offset') || '0');
 
-  const sb = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
+  const sb = createAdminClient();
 
   // Fetch queue entries with AI verifications
   let query = sb

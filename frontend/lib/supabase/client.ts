@@ -1,22 +1,22 @@
 'use client';
 
 import { createBrowserClient } from '@supabase/ssr';
+import {
+  getAnonKey,
+  getSupabaseUrl,
+  isSupabaseConfigured,
+  missingSupabaseEnvMessage,
+} from './env';
 
 let client: ReturnType<typeof createBrowserClient> | null = null;
 
 export function createClient() {
   if (client) return client;
-
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-
-  if (!url || !key) {
-    throw new Error(
-      'Missing NEXT_PUBLIC_SUPABASE_URL or NEXT_PUBLIC_SUPABASE_ANON_KEY. ' +
-      'Set them in Vercel → Project Settings → Environment Variables.'
-    );
+  if (!isSupabaseConfigured()) {
+    throw new Error(missingSupabaseEnvMessage());
   }
-
-  client = createBrowserClient(url, key);
+  client = createBrowserClient(getSupabaseUrl(), getAnonKey());
   return client;
 }
+
+export { isSupabaseConfigured };

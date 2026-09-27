@@ -1,7 +1,7 @@
 import type { FeedArticle } from './mockData';
 import type { LiveEntry } from '../components/live-blog';
 import type { VideoItem } from '../components/video-hub';
-import { createClient } from '@supabase/supabase-js';
+import { tryCreateAnonClient } from './supabase/admin';
 
 /**
  * Banglar Voice — typed API client.
@@ -14,15 +14,7 @@ const PB_BASE =
   process.env.NODE_ENV !== 'production'
     ? process.env.NEXT_PUBLIC_API_URL || ''
     : '';
-const SUPABASE_URL = process.env.NEXT_PUBLIC_SUPABASE_URL || '';
-const SUPABASE_ANON = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || '';
-
-const supabase =
-  SUPABASE_URL && SUPABASE_ANON
-    ? createClient(SUPABASE_URL, SUPABASE_ANON, {
-        auth: { persistSession: false, autoRefreshToken: false },
-      })
-    : null;
+const supabase = tryCreateAnonClient();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 

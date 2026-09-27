@@ -14,7 +14,13 @@ export default function ResetPasswordPage() {
   const [error, setError] = useState('');
 
   useEffect(() => {
-    const supabase = createClient();
+    let supabase;
+    try {
+      supabase = createClient();
+    } catch {
+      setError('Supabase is not configured on this Vercel project.');
+      return;
+    }
 
     const verifyRecoverySession = async () => {
       const { data, error } = await supabase.auth.getSession();
@@ -49,7 +55,14 @@ export default function ResetPasswordPage() {
 
     setSubmitting(true);
 
-    const supabase = createClient();
+    let supabase;
+    try {
+      supabase = createClient();
+    } catch {
+      setError('Supabase is not configured on this Vercel project.');
+      setSubmitting(false);
+      return;
+    }
     const { error } = await supabase.auth.updateUser({ password });
 
     if (error) {

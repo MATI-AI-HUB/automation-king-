@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
+import { createAnonClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
-import { createClient } from '@supabase/supabase-js';
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://banglarvoice24news.com';
 
@@ -33,10 +33,7 @@ function resolveCategory(raw: string | null | undefined): { key: string; label: 
 }
 
 function getSupabase() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY;
-  if (!url || !key) throw new Error('Supabase env vars not configured');
-  return createClient(url, key);
+  return createAnonClient();
 }
 
 export async function GET() {
