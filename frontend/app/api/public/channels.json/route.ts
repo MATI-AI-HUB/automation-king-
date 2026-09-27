@@ -1,25 +1,23 @@
 import { NextResponse } from 'next/server';
+import { tryCreateAnonClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
-import { createClient } from '@supabase/supabase-js';
 
 export const revalidate = 60;
 
 export async function GET() {
-  const sb = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    { auth: { persistSession: false } }
-  );
+  const sb = tryCreateAnonClient();
 
   let channels: any[] = [];
   try {
-    const { data } = await sb
-      .from('channels')
-      .select('id, name_bn, name_en, stream_url, type, logo, is_live')
-      .eq('is_active', true)
-      .order('sort_order', { ascending: true });
-    if (data && data.length > 0) channels = data;
+    if (sb) {
+      const { data } = await sb
+        .from('channels')
+        .select('id, name_bn, name_en, stream_url, type, logo, is_live')
+        .eq('is_active', true)
+        .order('sort_order', { ascending: true });
+      if (data && data.length > 0) channels = data;
+    }
   } catch {}
 
   if (channels.length === 0) {

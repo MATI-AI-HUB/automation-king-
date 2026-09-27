@@ -1,18 +1,16 @@
-// worker/src/lib/ai-logger.ts
-// Utility to log AI API calls, costs, and latency to Supabase
+import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 
-import { createClient } from '@supabase/supabase-js';
-
-// Use service role key to bypass RLS for inserting logs
-const supabaseAdmin = createClient(
-  process.env.SUPABASE_URL!,
-  process.env.SUPABASE_SERVICE_ROLE_KEY!
-);
+function getAdmin(): SupabaseClient | null {
+  const url = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL || '';
+  const key = process.env.SUPABASE_SERVICE_ROLE_KEY || '';
+  if (!url || !key) return null;
+  return createClient(url, key);
+}
 
 export interface AiLogPayload {
   userId?: string;
   model: string;
-  provider: string; // e.g., 'groq', 'gemini', 'openai'
+  provider: string;
   promptVersion?: string;
   inputTokens: number;
   outputTokens: number;
@@ -24,6 +22,8 @@ export interface AiLogPayload {
 
 export async function logAiCost(payload: AiLogPayload) {
   try {
+    const supabaseAdmin = getAdmin();
+    if (!supabaseAdmin) return;
     const { error } = await supabaseAdmin.from('ai_audit_log').insert({
       user_id: payload.userId || null,
       model: payload.model,
@@ -41,7 +41,6 @@ export async function logAiCost(payload: AiLogPayload) {
       console.error('Failed to insert AI audit log:', error.message);
     }
   } catch (err) {
-    // Never crash the main worker pipeline if logging fails
     console.error('Unexpected error in logAiCost:', err);
   }
 }

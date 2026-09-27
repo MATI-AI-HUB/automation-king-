@@ -1,17 +1,14 @@
 import { requireAdmin } from '@/lib/server/require-admin';
 import { redirect, notFound } from 'next/navigation';
 import Link from 'next/link';
-import { createClient } from '@supabase/supabase-js';
+import { tryCreateAdminClient } from '@/lib/supabase/admin';
 import { ApproveRejectButtons } from './approve-reject-buttons';
 
 export const dynamic = 'force-dynamic';
 
 async function getDetail(id: string) {
-  const sb = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
+  const sb = tryCreateAdminClient();
+  if (!sb) return null;
 
   const { data: queue } = await sb
     .from('verification_queue')

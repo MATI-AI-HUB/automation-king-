@@ -1,41 +1,55 @@
-import { createServerClient } from '@supabase/ssr'
-import { NextResponse } from 'next/server'
-import type { NextRequest } from 'next/server'
+import { createServerClient } from '@supabase/ssr';
+import { NextResponse } from 'next/server';
+import type { NextRequest } from 'next/server';
+import {
+  getAnonKey,
+  getSupabaseUrl,
+  isSupabaseConfigured,
+} from '@/lib/supabase/env';
 
-const ALLOWED_ROLES = ['admin', 'chief_editor', 'desk_editor']
+const ALLOWED_ROLES = ['admin', 'chief_editor', 'desk_editor'];
 
 export async function middleware(request: NextRequest) {
-  const path = request.nextUrl.pathname
-  const isApiRoute = path.startsWith('/api/admin')
+  const path = request.nextUrl.pathname;
+  const isApiRoute = path.startsWith('/api/admin');
 
-  let supabaseResponse = NextResponse.next({ request })
+  let supabaseResponse = NextResponse.next({ request });
 
-  const supabase = createServerClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
-    {
-      cookies: {
-        getAll() { return request.cookies.getAll() },
-        setAll(cookiesToSet) {
-          cookiesToSet.forEach(({ name, value, options }) => {
-            request.cookies.set(name, value)
-            supabaseResponse.cookies.set(name, value, options)
-          })
-        },
-      },
+  if (!isSupabaseConfigured()) {
+    if (isApiRoute) {
+      return NextResponse.json(
+        { error: 'Unauthorized' },
+        { status: 401, headers: { 'Cache-Control': 'no-store' } },
+      );
     }
-  )
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    url.searchParams.set('redirectedFrom', path);
+    return NextResponse.redirect(url);
+  }
 
-  // Try cookie first (web)
-  let user = (await supabase.auth.getUser()).data.user
+  const supabase = createServerClient(getSupabaseUrl(), getAnonKey(), {
+    cookies: {
+      getAll() {
+        return request.cookies.getAll();
+      },
+      setAll(cookiesToSet) {
+        cookiesToSet.forEach(({ name, value, options }) => {
+          request.cookies.set(name, value);
+          supabaseResponse.cookies.set(name, value, options);
+        });
+      },
+    },
+  });
 
-  // Fallback: Bearer token (mobile)
+  let user = (await supabase.auth.getUser()).data.user;
+
   if (!user) {
-    const authHeader = request.headers.get('authorization') || ''
+    const authHeader = request.headers.get('authorization') || '';
     if (authHeader.startsWith('Bearer ')) {
-      const token = authHeader.slice(7).trim()
-      const { data } = await supabase.auth.getUser(token)
-      user = data.user
+      const token = authHeader.slice(7).trim();
+      const { data } = await supabase.auth.getUser(token);
+      user = data.user;
     }
   }
 
@@ -43,34 +57,34 @@ export async function middleware(request: NextRequest) {
     if (isApiRoute) {
       return NextResponse.json(
         { error: 'Unauthorized' },
-        { status: 401, headers: { 'Cache-Control': 'no-store' } }
-      )
+        { status: 401, headers: { 'Cache-Control': 'no-store' } },
+      );
     }
-    const url = request.nextUrl.clone()
-    url.pathname = '/login'
-    url.searchParams.set('redirectedFrom', path)
-    return NextResponse.redirect(url)
+    const url = request.nextUrl.clone();
+    url.pathname = '/login';
+    url.searchParams.set('redirectedFrom', path);
+    return NextResponse.redirect(url);
   }
 
   const { data: profile } = await supabase
     .from('profiles')
     .select('role')
     .eq('id', user.id)
-    .single()
+    .single();
 
   if (!profile || !ALLOWED_ROLES.includes(profile.role)) {
     if (isApiRoute) {
       return NextResponse.json(
         { error: 'Forbidden' },
-        { status: 403, headers: { 'Cache-Control': 'no-store' } }
-      )
+        { status: 403, headers: { 'Cache-Control': 'no-store' } },
+      );
     }
-    return NextResponse.redirect(new URL('/', request.url))
+    return NextResponse.redirect(new URL('/', request.url));
   }
 
-  return supabaseResponse
+  return supabaseResponse;
 }
 
 export const config = {
   matcher: ['/admin/:path*', '/api/admin/:path*'],
-}
+};

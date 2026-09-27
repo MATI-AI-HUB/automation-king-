@@ -1,5 +1,6 @@
 .env.local
+.env
 .vercel
-.env*
 .recovery-backup-*
 __pycache__/
+.next/

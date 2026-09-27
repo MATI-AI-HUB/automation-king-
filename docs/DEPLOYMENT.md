@@ -54,7 +54,11 @@ git push origin main
 
 ### Frontend — Vercel (সঠিক কনফিগারেশন)
 
-**রিপোজিটরি:** `github.com/banglarvoice33-byte/BANGLARVOICE-APPS` (monorepo — frontend একটি subfolder)
+**রিপোজিটরি:** `github.com/MATI-AI-HUB/automation-king-` (monorepo — frontend একটি subfolder)
+
+**বিদ্যমান Hobby প্রজেক্টই ব্যবহার করো।** Owner: `matiailearninghub-3927`। দ্বিতীয় Gmail / টিম / CLI টোকেন দিয়ে co-authorize করলে Hobby অ্যাকাউন্ট ব্লক হয়। Native GitHub Integration ইতিমধ্যেই ডিপ্লয় করে — আলাদা Vercel Deploy workflow চালাবে না।
+
+**লিংকড Supabase:** `fqqdpngmftoddffvdukn` (`https://fqqdpngmftoddffvdukn.supabase.co`, Tokyo, GitHub `MATI-AI-HUB/automation-king-`)
 
 Vercel-এ import করার সময় **এই সেটিংস** ব্যবহার করো (Vercel ডিপ্লয় ত্রুটির ৯০% কারণ এখানে ভুল):
 
@@ -73,12 +77,14 @@ Vercel-এ import করার সময় **এই সেটিংস** ব্
 **Environment Variables** (Project → Settings → Environment Variables → Production/Preview):
 
 ```
-NEXT_PUBLIC_API_URL=https://<আপনার backend URL>   # PocketBase/Render — trailing slash নেই
-NEXT_PUBLIC_SUPABASE_URL=https://<project-ref>.supabase.co
-NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key>
+NEXT_PUBLIC_SITE_URL=https://banglarvoice24news.com
+NEXT_PUBLIC_SUPABASE_URL=https://fqqdpngmftoddffvdukn.supabase.co
+NEXT_PUBLIC_SUPABASE_ANON_KEY=<anon key from the linked Supabase project>
+SUPABASE_SERVICE_ROLE_KEY=<server-only>
+NEWSROOM_INGEST_KEY=<ingest secret>
 ```
 
-> **নোট:** `vercel.json`-এ `framework: nextjs` + `buildCommand` + `installCommand` + `outputDirectory` স্পষ্টভাবে সেট করা আছে, এবং `next.config.js`-এ `output: 'standalone'` যোগ করা হয়েছে। Root Directory = `frontend` সেট করলেই Vercel এই ফাইলগুলো পড়বে।
+> **নোট:** `frontend/vercel.json`-এ `framework: nextjs` + `buildCommand` + `installCommand` + `outputDirectory` সেট আছে। Root Directory = `frontend` সেট করলেই Vercel এই ফাইলগুলো পড়বে। Env ভ্যালু Hobby প্রজেক্টেই রাখো — নতুন প্রজেক্ট বানাবে না।
 
 **Vercel ডিপ্লয় ত্রুটি হলে চেক করো:**
 1. Root Directory = `frontend` কিনা (সবচেয়ে সাধারণ ভুল — root-এ import করলে `frontend/package.json` পাওয়া যায় না)

@@ -40,7 +40,7 @@ jobs:
         run: |
           set -euo pipefail
           test -n "$SUPABASE_ACCESS_TOKEN"
-          test -n "$SUPABASE_PROJECT_REF"
+          test -n "${SUPABASE_PROJECT_REF:-}"
           mapfile -t entrypoints < <(
             find supabase/functions \
               -mindepth 2 \
@@ -61,4 +61,9 @@ jobs:
       - name: Deploy all Edge Functions
         run: |
           set -euo pipefail
-          supabase functions deploy --project-ref "$SUPABASE_PROJECT_REF"
+          PROJECT_REF="${SUPABASE_PROJECT_REF:-fqqdpngmftoddffvdukn}"
+          if [ -z "$PROJECT_REF" ]; then
+            echo "SUPABASE_PROJECT_REF empty — set GitHub secret to the linked project fqqdpngmftoddffvdukn"
+            exit 1
+          fi
+          supabase functions deploy --project-ref "$PROJECT_REF"

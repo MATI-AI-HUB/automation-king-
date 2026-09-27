@@ -1,7 +1,33 @@
-import { createClient as createSupabaseClient } from '@supabase/supabase-js';
+import { createServerClient } from '@supabase/ssr';
+import { cookies } from 'next/headers';
+import {
+  getAnonKey,
+  getSupabaseUrl,
+  isSupabaseConfigured,
+  missingSupabaseEnvMessage,
+} from './env';
 
-export function createClient() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL || 'https://placeholder.supabase.co';
-  const anonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || 'placeholder-key';
-  return createSupabaseClient(url, anonKey);
+export async function createClient() {
+  if (!isSupabaseConfigured()) {
+    throw new Error(missingSupabaseEnvMessage());
+  }
+
+  const cookieStore = await cookies();
+
+  return createServerClient(getSupabaseUrl(), getAnonKey(), {
+    cookies: {
+      getAll() {
+        return cookieStore.getAll();
+      },
+      setAll(cookiesToSet) {
+        try {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            cookieStore.set(name, value, options);
+          });
+        } catch {
+          // Server Components cannot set cookies; middleware refreshes the session.
+        }
+      },
+    },
+  });
 }

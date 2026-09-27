@@ -21,7 +21,14 @@ function LoginForm() {
     setLoading(true);
     setError('');
 
-    const supabase = createClient();
+    let supabase;
+    try {
+      supabase = createClient();
+    } catch {
+      setError('Supabase is not configured on this Vercel project.');
+      setLoading(false);
+      return;
+    }
     const { error } = await supabase.auth.signInWithPassword({ email, password });
 
     if (error) {

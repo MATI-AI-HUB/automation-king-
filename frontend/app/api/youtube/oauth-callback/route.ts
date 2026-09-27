@@ -1,15 +1,11 @@
 import { NextResponse } from 'next/server';
 import { cookies } from 'next/headers';
-import { createClient } from '@supabase/supabase-js';
+import { createAdminClient } from '@/lib/supabase/admin';
 
 export const dynamic = 'force-dynamic';
 
 async function getVaultSecret(serviceName: string): Promise<string | null> {
-  const sb = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
+  const sb = createAdminClient();
 
   const { data: row } = await sb
     .from('api_vault')
@@ -77,11 +73,7 @@ export async function GET(req: Request) {
   }
 
   // Save to vault
-  const sb = createClient(
-    process.env.NEXT_PUBLIC_SUPABASE_URL!,
-    process.env.SUPABASE_SERVICE_ROLE_KEY!,
-    { auth: { persistSession: false } }
-  );
+  const sb = createAdminClient();
 
   await sb.rpc('delete_api_key', {
     p_service_name: 'YOUTUBE_REFRESH_TOKEN',
