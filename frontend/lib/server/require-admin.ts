@@ -1,10 +1,7 @@
-/**
- * Server-side admin guard (defense in depth on top of middleware).
- */
-import { createServerClient } from '@supabase/ssr';
-import { cookies } from 'next/headers';
+import { createServerClient } from '@supabase/ssr'
+import { cookies } from 'next/headers'
 
-const ALLOWED_ROLES = ['admin', 'chief_editor', 'desk_editor'];
+const ALLOWED_ROLES = ['admin', 'chief_editor', 'desk_editor'] as const;
 
 export type AuthUser = { id: string; email: string; role: string };
 
@@ -16,17 +13,28 @@ export async function requireAdmin(): Promise<AuthUser | null> {
     {
       cookies: {
         getAll: () => cookieStore.getAll(),
-        setAll: () => {},
+        setAll: (cookiesToSet) => {
+          cookiesToSet.forEach(({ name, value, options }) => {
+            try { cookieStore.set(name, value, options) } catch {}
+          })
+        },
       },
-    },
+    }
   );
-  const { data: { user } } = await sb.auth.getUser();
-  if (!user) return null;
+
+  // Optimized: getClaims() - No network call, local JWT verify
+  const { data: claimsData } = await sb.auth.getClaims();
+  const userId = claimsData?.claims?.sub as string | undefined;
+  const email = claimsData?.claims?.email as string | undefined;
+  if (!userId) return null;
+
   const { data: profile } = await sb
     .from('profiles')
     .select('role')
-    .eq('id', user.id)
+    .eq('id', userId)
     .maybeSingle();
-  if (!profile || !ALLOWED_ROLES.includes(profile.role)) return null;
-  return { id: user.id, email: user.email || '', role: profile.role };
+
+  if (!profile || !ALLOWED_ROLES.includes(profile.role as any)) return null;
+
+  return { id: userId, email: email || '', role: profile.role };
 }

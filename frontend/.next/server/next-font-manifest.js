@@ -1,0 +1,1 @@
+self.__NEXT_FONT_MANIFEST='{"pages":{},"app":{"/data/data/com.termux/files/home/automation-king-/frontend/app/layout":["static/media/2f474946e37563c5-s.p.ttf","static/media/3b9ca860c021d8d7-s.p.ttf","static/media/caca478487065949-s.p.ttf"]},"appUsingSizeAdjust":true,"pagesUsingSizeAdjust":false}';
