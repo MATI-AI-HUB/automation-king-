@@ -1,1 +1,8 @@
-{}
+{
+  "crons": [
+    {
+      "path": "/api/newsroom/ingest",
+      "schedule": "0 * * * *"
+    }
+  ]
+}
