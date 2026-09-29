@@ -1,0 +1,7 @@
+{
+  "production_ref": "rcffuqkofvuezgbjcixj",
+  "staging_ref": "fqqdpngmftoddffvdukn",
+  "critical": "No Flutter or browser client uses service_role.",
+  "source": "docs/supabase-operations.md",
+  "count": 80
+}

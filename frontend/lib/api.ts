@@ -2,6 +2,7 @@ import type { FeedArticle } from './mockData';
 import type { LiveEntry } from '../components/live-blog';
 import type { VideoItem } from '../components/video-hub';
 import { createClient } from '@supabase/supabase-js';
+import { fetchPublishedArticles } from './supabase/published-articles';
 
 /**
  * Banglar Voice — typed API client.
@@ -249,14 +250,14 @@ export const api = {
       throw new Error('Article backend unavailable');
     }
     try {
-      const { data, error } = await supabase
-        .from('articles')
-        .select('*')
-        .eq('id', slug)
-        .maybeSingle();
+      const { data, error } = await fetchPublishedArticles<SupabaseArticle>(supabase, {
+        columns: '*',
+        id: slug,
+        limit: 1,
+      });
       if (error) throw error;
-      if (!data) return {};
-      const row = data as SupabaseArticle;
+      if (!data?.[0]) return {};
+      const row = data[0];
       const base = mapArticle(row);
       return {
         ...base,

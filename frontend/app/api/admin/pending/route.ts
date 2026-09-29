@@ -1,39 +1,68 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { jsonError } from '@/lib/server/guard-route';
+import { requireAdminDetailed } from '@/lib/server/require-admin';
+import { createServiceRoleClient } from '@/lib/server/user-client';
+import { LIFECYCLE_QUEUE_STATUSES, REVIEW_STATUS_QUEUE } from '@/lib/flags';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
-function getAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('Supabase admin creds missing');
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
+const BASE_COLS = 'id, title_bn, content_bn, category_key, source_name, source_url, thumbnail_url, ai_confidence, created_at, status';
+
+function missingColumn(message: string | undefined): boolean {
+  const m = (message || '').toLowerCase();
+  return m.includes('does not exist') || m.includes('42703') || m.includes('schema cache');
 }
 
 export async function GET() {
+  const guard = await requireAdminDetailed();
+  if (!guard.ok) return jsonError(guard);
+
   try {
-    const supabase = getAdmin();
-    const { data, error } = await supabase
+    const supabase = createServiceRoleClient();
+    let rows: Record<string, unknown>[] | null = null;
+
+    const extended = await supabase
       .from('articles')
-      .select('id, title_bn, content_bn, category_key, source_name, source_url, thumbnail_url, ai_confidence, created_at')
-      .eq('status', 'pending')
+      .select(`${BASE_COLS}, review_status, editorial_status`)
+      .in('status', [...LIFECYCLE_QUEUE_STATUSES])
       .order('created_at', { ascending: false })
       .limit(50);
 
-    if (error) throw error;
+    if (extended.error && missingColumn(extended.error.message)) {
+      const fallback = await supabase
+        .from('articles')
+        .select(BASE_COLS)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false })
+        .limit(50);
+      if (fallback.error) throw fallback.error;
+      rows = fallback.data as Record<string, unknown>[] | null;
+    } else if (extended.error) {
+      throw extended.error;
+    } else {
+      rows = extended.data as Record<string, unknown>[] | null;
+    }
 
-    const items = (data || []).map((a) => ({
+    const queued = (rows || []).filter((a) => {
+      const review = String(a.review_status || a.editorial_status || '');
+      if (!review) return true;
+      return review === REVIEW_STATUS_QUEUE || review === 'pending_review' || review === 'auto_unverified';
+    });
+
+    const items = queued.map((a) => ({
       id: a.id,
       slug: a.id,
       title_bn: a.title_bn,
-      summary: (a.content_bn || '').slice(0, 200),
+      summary: String(a.content_bn || '').slice(0, 200),
       category: a.category_key || 'national',
       reporter_name: a.source_name || 'AI Pipeline',
       source_url: a.source_url,
       thumbnail_url: a.thumbnail_url,
-      ai_score: Math.round((a.ai_confidence ?? 0.7) * 100),
+      ai_score: Math.round((Number(a.ai_confidence ?? 0.7)) * 100),
       submitted_at: a.created_at,
+      status: a.status,
+      review_status: a.review_status || a.editorial_status || REVIEW_STATUS_QUEUE,
     }));
 
     return NextResponse.json(

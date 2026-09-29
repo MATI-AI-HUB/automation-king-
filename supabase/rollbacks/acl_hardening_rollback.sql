@@ -1,0 +1,3 @@
+-- Rollback notes for prepared ACL hardening. Do not apply until confirmed.
+-- Restore authenticated insert on profiles only if handle_new_user trigger is absent.
+-- Restore delete on articles/reading_history only if product still requires hard DELETE.

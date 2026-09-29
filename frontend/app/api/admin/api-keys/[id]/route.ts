@@ -1,17 +1,10 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { jsonError } from '@/lib/server/guard-route';
+import { requireAdminDetailed } from '@/lib/server/require-admin';
+import { createServiceRoleClient } from '@/lib/server/user-client';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
-
-function getAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('Supabase admin creds missing');
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
 
 // PATCH /api/admin/api-keys/:id — update active/usage/rotate
 export async function PATCH(
@@ -19,11 +12,13 @@ export async function PATCH(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const guard = await requireAdminDetailed();
+  if (!guard.ok) return jsonError(guard);
   try {
     const body = await req.json();
     const { is_active, usage_percent, key_value, environment = 'prod' } = body;
 
-    const supabase = getAdmin();
+    const supabase = createServiceRoleClient();
 
     // If key_value provided → rotate via wrapper
     if (key_value) {
@@ -82,8 +77,10 @@ export async function DELETE(
   { params }: { params: Promise<{ id: string }> },
 ) {
   const { id } = await params;
+  const guard = await requireAdminDetailed();
+  if (!guard.ok) return jsonError(guard);
   try {
-    const supabase = getAdmin();
+    const supabase = createServiceRoleClient();
 
     const { data: row } = await supabase
       .from('api_vault')

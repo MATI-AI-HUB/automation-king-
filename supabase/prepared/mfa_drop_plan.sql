@@ -1,0 +1,4 @@
+-- Drop plan after Auth TOTP is live and two-factor edge function no longer
+-- reads profiles.two_factor_secret. Do not apply until CONFIRM: production.
+-- alter table public.profiles drop column if exists two_factor_secret;
+-- alter table public.profiles drop column if exists two_factor_enabled;

@@ -13,11 +13,17 @@ jobs:
   ingest:
     runs-on: ubuntu-latest
     timeout-minutes: 15
+    if: ${{ vars.INGEST_ENABLED != 'false' }}
     defaults:
       run:
         working-directory: worker
     steps:
       - uses: actions/checkout@v4
+      - name: Confirm ingest switch
+        run: |
+          echo "INGEST_ENABLED=${INGEST_ENABLED:-unset (default true)}"
+        env:
+          INGEST_ENABLED: ${{ vars.INGEST_ENABLED }}
       - uses: actions/setup-node@v4
         with:
           node-version: 20

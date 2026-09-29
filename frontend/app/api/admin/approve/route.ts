@@ -1,28 +1,27 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { jsonError } from '@/lib/server/guard-route';
+import { requireAdminDetailed } from '@/lib/server/require-admin';
+import { createServiceRoleClient } from '@/lib/server/user-client';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
-function getAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('Supabase admin creds missing');
-  return createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-}
-
 export async function POST(req: Request) {
+  const guard = await requireAdminDetailed();
+  if (!guard.ok) return jsonError(guard);
+
   try {
     const { id, note } = await req.json();
     if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 });
 
-    const supabase = getAdmin();
+    const supabase = createServiceRoleClient();
+    const now = new Date().toISOString();
     const { data, error } = await supabase
       .from('articles')
       .update({
         status: 'published',
-        published_at: new Date().toISOString(),
-        updated_at: new Date().toISOString(),
+        published_at: now,
+        updated_at: now,
       })
       .eq('id', id)
       .select('id, status, published_at')

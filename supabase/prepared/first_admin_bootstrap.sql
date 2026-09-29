@@ -1,0 +1,3 @@
+-- Draft. First admin bootstrap after Auth user exists. Owner runs this.
+-- Never commit a real user id or email here.
+-- select public.set_user_role('<AUTH_USER_UUID>'::uuid, 'admin');

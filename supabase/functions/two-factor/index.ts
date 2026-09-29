@@ -2,92 +2,11 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { handleCors, json } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-
-function base32Encode(bytes: Uint8Array): string {
-  let bits = 0;
-  let value = 0;
-  let output = "";
-  for (const byte of bytes) {
-    value = (value << 8) | byte;
-    bits += 8;
-    while (bits >= 5) {
-      output += BASE32[(value >>> (bits - 5)) & 31];
-      bits -= 5;
-    }
-  }
-  if (bits > 0) output += BASE32[(value << (5 - bits)) & 31];
-  return output;
-}
-
-function base32Decode(value: string): Uint8Array {
-  let bits = 0;
-  let buffer = 0;
-  const output: number[] = [];
-  for (const character of value.toUpperCase().replace(/=+$/g, "")) {
-    const index = BASE32.indexOf(character);
-    if (index < 0) continue;
-    buffer = (buffer << 5) | index;
-    bits += 5;
-    if (bits >= 8) {
-      output.push((buffer >>> (bits - 8)) & 255);
-      bits -= 8;
-    }
-  }
-  return new Uint8Array(output);
-}
-
-function randomSecret(): string {
-  const bytes = new Uint8Array(20);
-  crypto.getRandomValues(bytes);
-  return base32Encode(bytes);
-}
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-  return copy.buffer as ArrayBuffer;
-}
-
-async function hmacSha1(key: Uint8Array, message: Uint8Array): Promise<Uint8Array> {
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    toArrayBuffer(key),
-    { name: "HMAC", hash: "SHA-1" },
-    false,
-    ["sign"],
-  );
-  return new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, toArrayBuffer(message)));
-}
-
-async function totp(secret: string, counter: number): Promise<string> {
-  const message = new Uint8Array(8);
-  let value = counter;
-  for (let index = 7; index >= 0; index -= 1) {
-    message[index] = value & 255;
-    value = Math.floor(value / 256);
-  }
-  const digest = await hmacSha1(base32Decode(secret), message);
-  const offset = digest[digest.length - 1] & 15;
-  const code = ((digest[offset] & 127) << 24) |
-    ((digest[offset + 1] & 255) << 16) |
-    ((digest[offset + 2] & 255) << 8) |
-    (digest[offset + 3] & 255);
-  return String(code % 1_000_000).padStart(6, "0");
-}
-
-async function verifyTotp(secret: string, code: string): Promise<boolean> {
-  const counter = Math.floor(Date.now() / 30_000);
-  for (const offset of [-1, 0, 1]) {
-    if (await totp(secret, counter + offset) === code) return true;
-  }
-  return false;
-}
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY") ?? Deno.env.get("SUPABASE_PUBLISHABLE_KEY") ?? "";
 
 function callerClient(req: Request) {
   const authorization = req.headers.get("Authorization") ?? "";
-  return createClient(SUPABASE_URL, SERVICE_ROLE, {
+  return createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: authorization } },
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
@@ -102,40 +21,47 @@ Deno.serve(async (req: Request) => {
   const { data: { user }, error: userError } = await client.auth.getUser();
   if (userError || !user) return json({ error: "unauthorized" }, 401);
 
-  if (action === "enable") {
-    const secret = randomSecret();
-    const { error } = await client.from("profiles").update({
-      two_factor_secret: secret,
-      two_factor_enabled: true,
-    }).eq("id", user.id);
-    if (error) return json({ error: "could not enable 2fa" }, 500);
-    await client.from("audit_log").insert({ actor_id: user.id, action: "2fa_enable", detail: {} });
+  if (action === "enable" || action === "enroll") {
+    const { data, error } = await client.auth.mfa.enroll({
+      factorType: "totp",
+      friendlyName: "BanglarVoice",
+    });
+    if (error || !data) return json({ error: error?.message ?? "enroll_failed" }, 500);
     return json({
-      secret,
-      otpauth_url: `otpauth://totp/BanglarVoice:${encodeURIComponent(user.email ?? user.id)}?secret=${secret}&issuer=BanglarVoice`,
+      factorId: data.id,
+      secret: data.totp.secret,
+      qr_code: data.totp.qr_code,
+      otpauth_url: data.totp.uri,
     });
   }
 
-  const { data: profile, error: profileError } = await client
-    .from("profiles")
-    .select("two_factor_secret")
-    .eq("id", user.id)
-    .single();
-  if (profileError || !profile?.two_factor_secret) return json({ error: "2fa not enabled" }, 400);
-
   const body = await req.json().catch(() => ({}));
   const code = String(body.code ?? "");
-  const valid = /^\d{6}$/.test(code) && await verifyTotp(profile.two_factor_secret, code);
+  const factorId = String(body.factorId ?? "");
 
-  if (action === "verify") return json({ valid });
-  if (action === "disable") {
-    if (!valid) return json({ error: "invalid code" }, 400);
-    const { error } = await client.from("profiles").update({
-      two_factor_secret: "",
-      two_factor_enabled: false,
-    }).eq("id", user.id);
-    if (error) return json({ error: "could not disable 2fa" }, 500);
-    await client.from("audit_log").insert({ actor_id: user.id, action: "2fa_disable", detail: {} });
+  if (action === "verify" || action === "challenge") {
+    const { data: factors, error: listError } = await client.auth.mfa.listFactors();
+    if (listError) return json({ error: listError.message }, 500);
+    const totp = (factors?.totp ?? []).find((f) => f.id === factorId) ?? (factors?.totp ?? [])[0];
+    if (!totp) return json({ error: "no_totp_factor" }, 400);
+    const { data: challenge, error: challengeError } = await client.auth.mfa.challenge({ factorId: totp.id });
+    if (challengeError || !challenge) return json({ error: challengeError?.message ?? "challenge_failed" }, 400);
+    const { error: verifyError } = await client.auth.mfa.verify({
+      factorId: totp.id,
+      challengeId: challenge.id,
+      code,
+    });
+    if (verifyError) return json({ valid: false, error: verifyError.message }, 400);
+    return json({ valid: true, ok: true });
+  }
+
+  if (action === "disable" || action === "unenroll") {
+    const { data: factors, error: listError } = await client.auth.mfa.listFactors();
+    if (listError) return json({ error: listError.message }, 500);
+    const totp = (factors?.totp ?? []).find((f) => f.id === factorId) ?? (factors?.totp ?? [])[0];
+    if (!totp) return json({ error: "no_totp_factor" }, 400);
+    const { error } = await client.auth.mfa.unenroll({ factorId: totp.id });
+    if (error) return json({ error: error.message }, 500);
     return json({ ok: true });
   }
 
