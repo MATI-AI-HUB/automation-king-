@@ -1,39 +1,97 @@
 name: Automated DB & Storage Backup
 on:
   schedule:
-    - cron: '0 2 * * 0' # প্রতি রবিবার সকাল ৮টা ঢাকা সময় (UTC 2:00 AM)
-  workflow_dispatch: # ম্যানুয়াল ট্রিগারও সুবিধা
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
 
 jobs:
   backup-db:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      actions: write
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Install PostgreSQL client & AWS CLI
+
+      - name: Install PostgreSQL client, AWS CLI, age
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
-          sudo apt-get update
-          sudo apt-get install -y postgresql-client awscli zip unzip
+          set -euo pipefail
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq postgresql-client awscli zip unzip age openssl
+          pg_dump --version
 
       - name: Generate Timestamp
         id: timestamp
-        run: echo "DATE=$(date +%Y-%m-%d_%H%M%S)" >> $GITHUB_ENV
+        run: echo "DATE=$(date +%Y-%m-%d_%H%M%S)" >> "$GITHUB_ENV"
 
-      - name: Run Database Dump
+      - name: Run Database Dump (public, auth, storage + ACLs)
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          BACKUP_OPENSSL_PASSPHRASE: ${{ secrets.BACKUP_OPENSSL_PASSPHRASE }}
         run: |
-          echo "Starting database dump..."
+          set -euo pipefail
+          if [ -z "${SUPABASE_DB_URL:-}" ]; then
+            echo "SUPABASE_DB_URL is not configured; refusing to run."
+            exit 1
+          fi
+          echo "::add-mask::${SUPABASE_DB_URL}"
+          HOST="$(python3 - <<'PY'
+          import os
+          from urllib.parse import urlparse
+          u = urlparse(os.environ["SUPABASE_DB_URL"])
+          print(u.hostname or "")
+          PY
+          )"
+          echo "::add-mask::$HOST"
+
+          CLIENT_MAJOR="$(psql --version | awk '{print $3}' | cut -d. -f1)"
+          SERVER_MAJOR="$(psql "$SUPABASE_DB_URL" -Atqc 'SHOW server_version_num' | awk '{print int($1/10000)}')"
+          echo "pg client major=$CLIENT_MAJOR server major=$SERVER_MAJOR"
+          if [ "$CLIENT_MAJOR" -lt "$SERVER_MAJOR" ]; then
+            echo "PostgreSQL client major must be >= server major"
+            exit 1
+          fi
+
           pg_dump "$SUPABASE_DB_URL" \
             --format=custom \
             --compress=9 \
             --no-owner \
-            --no-acl \
             --schema=public \
+            --schema=auth \
+            --schema=storage \
             --file=backup.dump
-          echo "✅ DB dump completed: backup.dump"
+
+          SIZE="$(stat -c%s backup.dump)"
+          echo "dump_bytes=$SIZE"
+          if [ "$SIZE" -le 0 ]; then
+            echo "dump is empty"
+            exit 1
+          fi
+          pg_restore -l backup.dump > backup.toc.txt
+          if [ ! -s backup.toc.txt ]; then
+            echo "pg_restore -l produced an empty table of contents"
+            exit 1
+          fi
+          grep -E 'POLICY|ACL|TABLE DATA|TABLE ' backup.toc.txt | head -n 40
+
+          if [ -n "${BACKUP_AGE_RECIPIENT:-}" ]; then
+            age -r "$BACKUP_AGE_RECIPIENT" -o backup.dump.age backup.dump
+            UPLOAD_FILE=backup.dump.age
+          elif [ -n "${BACKUP_OPENSSL_PASSPHRASE:-}" ]; then
+            echo "::add-mask::${BACKUP_OPENSSL_PASSPHRASE}"
+            openssl enc -aes-256-cbc -pbkdf2 -salt \
+              -in backup.dump \
+              -out backup.dump.enc \
+              -pass env:BACKUP_OPENSSL_PASSPHRASE
+            UPLOAD_FILE=backup.dump.enc
+          else
+            echo "Neither BACKUP_AGE_RECIPIENT nor BACKUP_OPENSSL_PASSPHRASE is set"
+            exit 1
+          fi
+          echo "UPLOAD_FILE=$UPLOAD_FILE" >> "$GITHUB_ENV"
 
       - name: Upload to Cloudflare R2
         env:
@@ -42,21 +100,30 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
-          echo "Uploading to R2..."
-          aws s3 cp backup.dump "s3://banglarvoice-backups/db/${DATE}_backup.dump" \
+          set -euo pipefail
+          echo "::add-mask::${R2_ENDPOINT}"
+          KEY="db/${DATE}_$(basename "$UPLOAD_FILE")"
+          aws s3 cp "$UPLOAD_FILE" "s3://banglarvoice-backups/${KEY}" \
             --endpoint-url "$R2_ENDPOINT" \
             --sse AES256 \
-            --storage-class DEEP_ARCHIVE
-          echo "✅ Backup uploaded to R2"
+            --storage-class STANDARD
+          echo "encrypted backup uploaded"
+
+      - name: Retain short-lived workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: backup-toc
+          path: backup.toc.txt
+          retention-days: 3
 
       - name: Cleanup Local Files
-        run: rm -f backup.dump
         if: always()
+        run: rm -f backup.dump backup.dump.age backup.dump.enc backup.toc.txt
 
   notify-success:
     needs: backup-db
     runs-on: ubuntu-latest
     if: success()
     steps:
-      - name: Send Success Notification (Optional)
-        run: echo "✅ Production backup completed successfully at $(date -u)"
+      - name: Send Success Notification
+        run: echo "Production backup completed successfully"

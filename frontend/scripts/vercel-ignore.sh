@@ -1,8 +1,14 @@
 #!/usr/bin/env bash
 set -euo pipefail
 # Vercel Ignored Build Step: exit 0 skips the build, exit 1 proceeds.
-# Compare against the last successful deployment SHA when Vercel provides it,
-# otherwise fall back to HEAD^ so worker-only commits still skip.
+# Skip every branch except main. On main, skip when frontend/ is unchanged.
+
+ref="${VERCEL_GIT_COMMIT_REF:-}"
+if [ "$ref" != "main" ]; then
+  echo "Branch '$ref' is not main; skipping Vercel build"
+  exit 0
+fi
+
 root="$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
 prev="${VERCEL_GIT_PREVIOUS_SHA:-}"
 if [ -n "$prev" ] && git -C "$root" cat-file -e "${prev}^{commit}" 2>/dev/null; then

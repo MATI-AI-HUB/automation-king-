@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { fetchPublishedArticles } from '@/lib/supabase/published-articles';
 
 export const revalidate = 300;
 
@@ -18,13 +19,16 @@ export async function GET() {
   let items: { id: string; title_bn: string; excerpt_bn: string | null; published_at: string | null; source_name: string | null }[] = [];
   if (url && key) {
     const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data } = await supabase
-      .from('articles')
-      .select('id, title_bn, excerpt_bn, published_at, source_name')
-      .eq('status', 'published')
-      .not('published_at', 'is', null)
-      .order('published_at', { ascending: false })
-      .limit(30);
+    const { data } = await fetchPublishedArticles<{
+      id: string;
+      title_bn: string;
+      excerpt_bn: string | null;
+      published_at: string | null;
+      source_name: string | null;
+    }>(supabase, {
+      columns: 'id, title_bn, excerpt_bn, published_at, source_name',
+      limit: 30,
+    });
     items = data || [];
   }
 

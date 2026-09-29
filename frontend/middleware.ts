@@ -3,10 +3,12 @@ import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
 const ALLOWED_ROLES = ['admin', 'chief_editor', 'desk_editor']
+const AAL2_ROLES = new Set(['admin', 'chief_editor'])
 
 export async function middleware(request: NextRequest) {
   const path = request.nextUrl.pathname
   const isApiRoute = path.startsWith('/api/admin')
+  const deskEditorRequiresAal2 = process.env.DESK_EDITOR_REQUIRE_AAL2 === 'true'
 
   const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
   const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
@@ -51,7 +53,7 @@ export async function middleware(request: NextRequest) {
     if (!user) {
       if (isApiRoute) {
         return NextResponse.json(
-          { error: 'Unauthorized' },
+          { error: 'unauthorized' },
           { status: 401, headers: { 'Cache-Control': 'no-store' } },
         )
       }
@@ -70,11 +72,29 @@ export async function middleware(request: NextRequest) {
     if (!profile || !ALLOWED_ROLES.includes(profile.role)) {
       if (isApiRoute) {
         return NextResponse.json(
-          { error: 'Forbidden' },
+          { error: 'forbidden' },
           { status: 403, headers: { 'Cache-Control': 'no-store' } },
         )
       }
       return NextResponse.redirect(new URL('/', request.url))
+    }
+
+    const needsAal2 = AAL2_ROLES.has(profile.role) || (profile.role === 'desk_editor' && deskEditorRequiresAal2)
+    if (needsAal2) {
+      const { data: aal } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      if (aal?.currentLevel !== 'aal2') {
+        if (isApiRoute) {
+          return NextResponse.json(
+            { error: 'mfa_required' },
+            { status: 401, headers: { 'Cache-Control': 'no-store' } },
+          )
+        }
+        const loginUrl = request.nextUrl.clone()
+        loginUrl.pathname = '/login'
+        loginUrl.searchParams.set('redirectedFrom', path)
+        loginUrl.searchParams.set('mfa', '1')
+        return NextResponse.redirect(loginUrl)
+      }
     }
 
     return supabaseResponse

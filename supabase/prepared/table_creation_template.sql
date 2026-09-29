@@ -1,0 +1,13 @@
+-- Template for new public tables. Not applied until CONFIRM: production.
+-- Default grants to anon/authenticated must not be ALL. RLS on from day one.
+
+-- create table if not exists public.<name> (
+--   id uuid primary key default gen_random_uuid(),
+--   created_at timestamptz not null default now(),
+--   updated_at timestamptz not null default now()
+-- );
+-- alter table public.<name> enable row level security;
+-- revoke all on public.<name> from anon, authenticated, public;
+-- grant select on public.<name> to service_role;
+-- grant all on public.<name> to service_role;
+-- -- add policies explicitly; never rely on default grants

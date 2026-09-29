@@ -1,0 +1,8 @@
+-- Contract for the code agent. Existing production signature:
+--   public.set_breaking_ticker(p_text text) returns boolean
+-- security definer; updates breaking_ticker.id = 1; sets is_active = true.
+-- Code feature-detects this RPC. If missing, admin breaking route refuses to
+-- trust in-memory state in production and returns persisted=false.
+--
+-- Proposed additive (NOT applied):
+--   set_breaking_ticker(p_text text, p_active boolean default true) returns boolean

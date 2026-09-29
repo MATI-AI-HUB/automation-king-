@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
+import { fetchPublishedArticles } from '@/lib/supabase/published-articles';
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://banglarvoice24news.com';
 
@@ -42,14 +43,10 @@ function getSupabase() {
 export async function GET() {
   try {
     const supabase = getSupabase();
-    const { data: articles, error } = await supabase
-      .from('articles')
-      .select('*')
-      .eq('status', 'published')
-      .not('published_at', 'is', null)
-      .lte('published_at', new Date().toISOString())
-      .order('published_at', { ascending: false })
-      .limit(50);
+    const { data: articles, error } = await fetchPublishedArticles<Record<string, string | null>>(supabase, {
+      columns: '*',
+      limit: 50,
+    });
 
     if (error) throw error;
 
