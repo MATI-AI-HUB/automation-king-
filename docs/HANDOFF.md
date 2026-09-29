@@ -8,7 +8,8 @@ This clone started on `main` (7e22421) with no prior feature-branch drafts. Work
 
 ## P1 Preserve
 - Drafts written to `supabase/prepared/` and `supabase/rollbacks/` (not migrations).
-- Push + draft PR: PENDING if `gh` is not authenticated in this environment.
+- Commit `174b6e6` MATI-AI-HUB <matiailearninghub@gmail.com> pushed to `origin/260929-feat-code-readiness-hardened-db`.
+- Draft PR: PENDING — `gh` not logged in. Open: https://github.com/MATI-AI-HUB/automation-king-/pull/new/260929-feat-code-readiness-hardened-db
 
 ## P2 Inventory
 - DONE: `docs/supabase-operations.md`, `docs/supabase-operations.json`
@@ -60,7 +61,7 @@ This clone started on `main` (7e22421) with no prior feature-branch drafts. Work
 - CI: local tests run on this branch; GitHub CI UNKNOWN until push.
 
 ## Next action for you
-1. Authenticate `gh` if push/PR failed, then `git push -u origin 260929-feat-code-readiness-hardened-db` and open a draft PR.
+1. Open a draft PR from https://github.com/MATI-AI-HUB/automation-king-/pull/new/260929-feat-code-readiness-hardened-db (`gh` not authenticated here). Do not merge to main.
 2. Create repo variable `INGEST_ENABLED=true` (or leave unset).
 3. Confirm backup secrets `BACKUP_AGE_RECIPIENT` or `BACKUP_OPENSSL_PASSPHRASE` exist — do not run backup yet.
 4. Do not merge to main (deploys Edge Functions).
