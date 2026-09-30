@@ -4,9 +4,6 @@ const path = require('path')
 const nextConfig = {
   reactStrictMode: true,
   outputFileTracingRoot: path.join(__dirname),
-  experimental: {
-    allowedHosts: ['.monkeycode-ai.live'],
-  },
   images: {
     remotePatterns: [{ protocol: 'https', hostname: '**' }],
   },
@@ -41,7 +38,7 @@ const nextConfig = {
     }
     return config
   },
-  allowedDevOrigins: ['192.168.0.106', '10.83.106.238'],
+  allowedDevOrigins: ['192.168.0.106', '10.83.106.238', '.monkeycode-ai.live'],
 }
 
 module.exports = nextConfig

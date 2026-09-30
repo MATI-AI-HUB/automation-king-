@@ -6,7 +6,9 @@ node_modules/
 supabase/.temp/
 worker/dist/
 frontend/next/
+frontend/.next/
 frontend/tsconfig.tsbuildinfo
 bun.lockb
 .vercel
 .env*
+!.env.example
