@@ -12,17 +12,34 @@ type ClientLike = {
   from: (table: string) => QueryLike;
 };
 
-function isMissingRelation(error: { message?: string; code?: string } | null): boolean {
+export const ARTICLE_FEED_RELATIONS = [
+  'public_articles_feed',
+  'published_articles_safe',
+  'articles',
+] as const;
+
+export type ArticleFeedSource = (typeof ARTICLE_FEED_RELATIONS)[number];
+
+function isUnavailableRelation(error: { message?: string; code?: string } | null): boolean {
   if (!error) return false;
-  const code = error.code || '';
+  const code = (error.code || '').toUpperCase();
   const message = (error.message || '').toLowerCase();
   return (
     code === '42P01' ||
+    code === '42501' ||
     code === 'PGRST205' ||
     code === 'PGRST116' ||
+    code === 'PGRST301' ||
+    code === '401' ||
+    code === '403' ||
+    code === '406' ||
     message.includes('does not exist') ||
     message.includes('could not find the table') ||
-    message.includes('schema cache')
+    message.includes('schema cache') ||
+    message.includes('permission denied') ||
+    message.includes('row-level security') ||
+    message.includes('not accept') ||
+    message.includes('jwt')
   );
 }
 
@@ -37,7 +54,11 @@ export async function selectPublishedArticles<T = Record<string, unknown>>(
     limit?: number;
     single?: boolean;
   } = {},
-): Promise<{ data: T | T[] | null; error: { message?: string; code?: string } | null; source: 'view' | 'table' }> {
+): Promise<{
+  data: T | T[] | null;
+  error: { message?: string; code?: string } | null;
+  source: ArticleFeedSource;
+}> {
   const apply = (table: string) => {
     let q = client.from(table).select(columns);
     if (opts.id) q = q.eq('id', opts.id);
@@ -49,17 +70,20 @@ export async function selectPublishedArticles<T = Record<string, unknown>>(
     return q.limit(opts.limit ?? 50);
   };
 
-  const viewResult = await apply('published_articles_safe');
-  if (!viewResult.error) {
-    return { data: viewResult.data as T | T[] | null, error: null, source: 'view' };
+  let lastError: { message?: string; code?: string } | null = null;
+  let lastSource: ArticleFeedSource = ARTICLE_FEED_RELATIONS[0];
+
+  for (const table of ARTICLE_FEED_RELATIONS) {
+    const result = await apply(table);
+    lastSource = table;
+    if (!result.error) {
+      return { data: result.data as T | T[] | null, error: null, source: table };
+    }
+    lastError = result.error;
+    if (!isUnavailableRelation(result.error)) {
+      return { data: null, error: result.error, source: table };
+    }
   }
-  if (!isMissingRelation(viewResult.error)) {
-    return { data: null, error: viewResult.error, source: 'view' };
-  }
-  const tableResult = await apply('articles');
-  return {
-    data: tableResult.data as T | T[] | null,
-    error: tableResult.error,
-    source: 'table',
-  };
+
+  return { data: null, error: lastError, source: lastSource };
 }
