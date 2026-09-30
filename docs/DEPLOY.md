@@ -77,6 +77,7 @@ P0: `NEXT_PUBLIC_` প্রিফিক্সে `SERVICE_ROLE` / `SECRET` / `O
 
 Vercel Ignored Build Step: **exit 0 = skip**, **exit 1 = build**।
 
+0. `VERCEL_GIT_COMMIT_REF` `main` না হলে **skip** (Hobby preview build বাঁচায়; প্রোড শুধু `main`)।
 1. `VERCEL_GIT_PREVIOUS_SHA` থাকলে এবং সেই commit রিপোতে থাকলে: `frontend/`-এ diff না থাকলে skip, থাকলে build।
 2. না থাকলে `HEAD^` vs `HEAD` এ `frontend/` দেখে একই সিদ্ধান্ত।
 3. Parent commit না থাকলে (প্রথম commit) → **build** (`exit 1`)।

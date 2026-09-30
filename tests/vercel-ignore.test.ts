@@ -94,6 +94,16 @@ describe('vercel-ignore.sh', () => {
     expect(build.stdout).toMatch(/frontend\/ changed/i);
   });
 
+  it('skips when VERCEL_GIT_COMMIT_REF is not main (Hobby preview save)', () => {
+    const dir = initRepo();
+    writeFileSync(join(dir, 'frontend/index.txt'), 'web');
+    git(dir, ['add', '.']);
+    git(dir, ['commit', '-m', 'feat: frontend']);
+    const r = runIgnore(dir, { VERCEL_GIT_COMMIT_REF: 'p1-owner-hardening' });
+    expect(r.status).toBe(0);
+    expect(r.stdout).toMatch(/is not main/i);
+  });
+
   it('falls back to HEAD^ when VERCEL_GIT_PREVIOUS_SHA is unknown', () => {
     const dir = initRepo();
     writeFileSync(join(dir, 'frontend/index.txt'), 'web');
