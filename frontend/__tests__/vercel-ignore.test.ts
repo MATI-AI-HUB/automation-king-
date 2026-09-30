@@ -19,10 +19,10 @@ function run(env: NodeJS.ProcessEnv): { status: number; stdout: string } {
 }
 
 describe('vercel-ignore.sh', () => {
-  it('skips preview branches', () => {
-    const result = run({ VERCEL_GIT_COMMIT_REF: '260929-feat-code-readiness-hardened-db' });
-    expect(result.status).toBe(0);
-    expect(result.stdout).toContain('is not main');
+  it('does not skip solely because the branch is not main', () => {
+    const result = run({ VERCEL_GIT_COMMIT_REF: 'p1-owner-hardening' });
+    expect(result.stdout).not.toContain('is not main');
+    expect([0, 1]).toContain(result.status);
   });
 
   it('does not skip solely because ref is main', () => {

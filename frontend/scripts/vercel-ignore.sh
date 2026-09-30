@@ -1,13 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
-# Vercel Ignored Build Step: exit 0 skips the build, exit 1 proceeds.
-# Skip every branch except main. On main, skip when frontend/ is unchanged.
-
-ref="${VERCEL_GIT_COMMIT_REF:-}"
-if [ -n "$ref" ] && [ "$ref" != "main" ]; then
-  echo "Skipping Vercel build: branch '${ref}' is not main"
-  exit 0
-fi
+# Vercel Ignored Build Step: exit 0 skips (shows Canceled), exit 1 proceeds.
+# Never skip solely because the branch is not main — that canceled Hobby
+# preview/PR deploys. Skip only when frontend/ is unchanged vs previous SHA.
 
 root="$(git rev-parse --show-toplevel 2>/dev/null || echo ".")"
 prev="${VERCEL_GIT_PREVIOUS_SHA:-}"
@@ -23,4 +18,5 @@ if git -C "$root" rev-parse --verify HEAD^ >/dev/null 2>&1 && git -C "$root" dif
   echo "No frontend/ changes in HEAD; skipping Vercel build"
   exit 0
 fi
+echo "frontend/ changed or no parent SHA; building"
 exit 1
