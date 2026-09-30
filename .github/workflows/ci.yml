@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: [main, 'feat/**', '260929-feat-code-readiness-hardened-db']
+    branches: [main, p1-owner-hardening, 'feat/**', '260929-feat-code-readiness-hardened-db']
   pull_request:
     branches: [main]
   workflow_dispatch:
@@ -32,27 +32,33 @@ jobs:
           cache: npm
           cache-dependency-path: worker/package-lock.json
       - run: npm ci --legacy-peer-deps
-      - run: npx tsc --noEmit
-      - run: npx vitest run
+      - run: npm run typecheck
+      - run: npm test
 
   frontend:
-    name: Frontend (typecheck + lint + build + test)
+    name: Frontend (lint + typecheck + test + build)
     runs-on: ubuntu-latest
     defaults:
       run:
         working-directory: frontend
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
       - uses: actions/setup-node@v4
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: frontend/package-lock.json
-      - run: npm ci --legacy-peer-deps
-      - run: npx tsc --noEmit
+      - run: npm ci
       - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
       - run: npm run build
-      - run: npx vitest run
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: https://fqqdpngmftoddffvdukn.supabase.co
+          NEXT_PUBLIC_SUPABASE_ANON_KEY: test-anon-key
+          NEXT_PUBLIC_SITE_URL: https://banglarvoice24news.com
 
   secret-scan:
     name: Secret pattern scan
@@ -66,6 +72,13 @@ jobs:
             exit 1
           fi
           echo 'No JWT blob in tracked non-doc files.'
+      - name: Fail if NEXT_PUBLIC_ wraps service-role / openai / secret keys
+        run: |
+          if git grep -n -E 'NEXT_PUBLIC_.*(SERVICE_ROLE|SECRET|OPENAI_KEY|OPENAI_API_KEY)' -- ':!*.md' ':!docs/**' ':!.env.example'; then
+            echo 'P0: secret-like name under NEXT_PUBLIC_.'
+            exit 1
+          fi
+          echo 'No NEXT_PUBLIC_ service-role/openai/secret names.'
 
   backend:
     name: Backend (go build)
