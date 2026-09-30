@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/server/require-admin';
+import { requireStaffFromRequest } from '@/lib/server/require-admin';
 import { createClient } from '@supabase/supabase-js';
 
 export const dynamic = 'force-dynamic';

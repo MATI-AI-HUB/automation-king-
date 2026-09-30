@@ -18,13 +18,27 @@ jobs:
         working-directory: worker
     steps:
       - uses: actions/checkout@v4
+      - name: Check INGEST_ENABLED
+        env:
+          INGEST_ENABLED: ${{ vars.INGEST_ENABLED }}
+        run: |
+          set -euo pipefail
+          enabled="${INGEST_ENABLED:-true}"
+          echo "INGEST_ENABLED=${enabled}"
+          if [ "$enabled" != "true" ]; then
+            echo "GitHub ingest disabled via repository variable INGEST_ENABLED. Skipping."
+            exit 0
+          fi
       - uses: actions/setup-node@v4
+        if: ${{ vars.INGEST_ENABLED != 'false' }}
         with:
           node-version: 20
           cache: npm
           cache-dependency-path: worker/package-lock.json
       - run: npm ci --legacy-peer-deps
+        if: ${{ vars.INGEST_ENABLED != 'false' }}
       - name: Run one news cycle
+        if: ${{ vars.INGEST_ENABLED != 'false' }}
         env:
           NODE_ENV: production
           BV_BASE_URL: https://automation-king-lcb2.vercel.app

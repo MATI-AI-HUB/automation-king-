@@ -1,26 +1,18 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { withStaff } from '@/lib/server/staff-route';
+import { createServiceClient } from '@/lib/supabase/service';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
-function getAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('Supabase admin creds missing');
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-// POST /api/admin/api-keys/:id/test — verify key works
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
+  return withStaff(req, async () => {
   const { id } = await params;
   try {
-    const supabase = getAdmin();
+    const supabase = createServiceClient();
 
     const { data: row } = await supabase
       .from('api_vault')
@@ -94,4 +86,5 @@ export async function POST(
       { status: 500 },
     );
   }
+  });
 }

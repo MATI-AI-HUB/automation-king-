@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/server/require-admin';
+import { requireStaffFromRequest } from '@/lib/server/require-admin';
 import { getSecretValue, markTested } from '@/lib/control/vault-service';
 import { listSecrets } from '@/lib/control/vault-service';
 import { logAction } from '@/lib/control/audit-service';
@@ -57,11 +57,12 @@ async function testOpenAI(key: string): Promise<TestResult> {
 }
 
 export async function POST(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireStaffFromRequest(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status, headers: { 'Cache-Control': 'no-store' } });
+  const admin = auth.user;
   try {
     const { id } = await params;
     const secrets = await listSecrets();

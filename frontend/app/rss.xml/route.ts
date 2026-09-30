@@ -1,4 +1,5 @@
 import { createClient } from '@supabase/supabase-js';
+import { selectPublishedArticles } from '../../lib/supabase/published-articles';
 
 export const revalidate = 300;
 
@@ -18,14 +19,18 @@ export async function GET() {
   let items: { id: string; title_bn: string; excerpt_bn: string | null; published_at: string | null; source_name: string | null }[] = [];
   if (url && key) {
     const supabase = createClient(url, key, { auth: { persistSession: false, autoRefreshToken: false } });
-    const { data } = await supabase
-      .from('articles')
-      .select('id, title_bn, excerpt_bn, published_at, source_name')
-      .eq('status', 'published')
-      .not('published_at', 'is', null)
-      .order('published_at', { ascending: false })
-      .limit(30);
-    items = data || [];
+    const { data } = await selectPublishedArticles<{
+      id: string;
+      title_bn: string;
+      excerpt_bn: string | null;
+      published_at: string | null;
+      source_name: string | null;
+    }>(supabase, 'id, title_bn, excerpt_bn, published_at, source_name', {
+      requirePublishedAt: true,
+      orderBy: 'published_at',
+      limit: 30,
+    });
+    items = (Array.isArray(data) ? data : data ? [data] : []) || [];
   }
 
   const rssItems = items

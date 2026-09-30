@@ -2,9 +2,16 @@ name: CI
 
 on:
   push:
-    branches: [main, 'feat/**']
+    branches: [main, 'feat/**', '260929-feat-code-readiness-hardened-db']
   pull_request:
     branches: [main]
+  workflow_dispatch:
+    inputs:
+      run_staging_matrix:
+        description: 'Run staging role-matrix tests (requires STAGING_* secrets)'
+        required: false
+        default: false
+        type: boolean
 
 concurrency:
   group: ci-${{ github.workflow }}-${{ github.ref }}
@@ -73,3 +80,25 @@ jobs:
           go-version-file: archive/backend/go.mod
           cache-dependency-path: archive/backend/go.sum
       - run: go build ./...
+
+  staging-role-matrix:
+    name: Staging role matrix (on demand)
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.run_staging_matrix }}
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - run: npm ci --legacy-peer-deps
+      - name: Run staging matrix
+        env:
+          STAGING_SUPABASE_URL: ${{ secrets.STAGING_SUPABASE_URL }}
+          STAGING_SUPABASE_ANON_KEY: ${{ secrets.STAGING_SUPABASE_ANON_KEY }}
+          STAGING_SERVICE_ROLE_KEY: ${{ secrets.STAGING_SERVICE_ROLE_KEY }}
+        run: npx vitest run __tests__/staging-role-matrix.test.ts

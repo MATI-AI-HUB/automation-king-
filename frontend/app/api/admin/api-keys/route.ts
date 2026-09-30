@@ -1,22 +1,14 @@
 import { NextResponse } from 'next/server';
-import { createClient } from '@supabase/supabase-js';
+import { withStaff } from '@/lib/server/staff-route';
+import { createServiceClient } from '@/lib/supabase/service';
 
 export const revalidate = 0;
 export const dynamic = 'force-dynamic';
 
-function getAdmin() {
-  const url = process.env.NEXT_PUBLIC_SUPABASE_URL;
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY;
-  if (!url || !key) throw new Error('Supabase admin creds missing');
-  return createClient(url, key, {
-    auth: { persistSession: false, autoRefreshToken: false },
-  });
-}
-
-// GET /api/admin/api-keys — list all
-export async function GET() {
+export async function GET(req: Request) {
+  return withStaff(req, async () => {
   try {
-    const supabase = getAdmin();
+    const supabase = createServiceClient();
     const { data, error } = await supabase
       .from('api_vault')
       .select('id, service_name, environment, is_active, last_tested, usage_percent, created_at, updated_at')
@@ -34,10 +26,11 @@ export async function GET() {
       { status: 500 },
     );
   }
+  });
 }
 
-// POST /api/admin/api-keys — create or replace
 export async function POST(req: Request) {
+  return withStaff(req, async () => {
   try {
     const body = await req.json();
     const { service_name, environment = 'prod', key_value } = body;
@@ -49,7 +42,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const supabase = getAdmin();
+    const supabase = createServiceClient();
     const { data, error } = await supabase.rpc('create_api_key', {
       p_service_name: service_name,
       p_environment: environment,
@@ -68,4 +61,5 @@ export async function POST(req: Request) {
       { status: 500 },
     );
   }
+  });
 }

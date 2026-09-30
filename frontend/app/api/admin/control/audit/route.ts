@@ -1,12 +1,13 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/server/require-admin';
+import { requireStaffFromRequest } from '@/lib/server/require-admin';
 import { listAudit } from '@/lib/control/audit-service';
 
 export const dynamic = 'force-dynamic';
 
 export async function GET(req: Request) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireStaffFromRequest(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status, headers: { 'Cache-Control': 'no-store' } });
+  const admin = auth.user;
   try {
     const url = new URL(req.url);
     const limit = Math.min(parseInt(url.searchParams.get('limit') || '100', 10), 500);
