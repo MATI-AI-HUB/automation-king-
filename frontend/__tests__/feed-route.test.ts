@@ -56,7 +56,7 @@ describe('GET /api/public/feed.json', () => {
     expect(body.items[0].source_name).toBe('বিবিসি বাংলা');
     expect(body.items[0].image_credit).toBe('Wikimedia');
     expect(body.items[0].authors[0].name).toBe('বিবিসি বাংলা');
-    expect(from).toHaveBeenCalledWith('published_articles_safe');
+    expect(from).toHaveBeenCalledWith('public_articles_feed');
   });
 
   it('returns 503 when supabase is unconfigured', async () => {

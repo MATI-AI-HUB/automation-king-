@@ -13,6 +13,23 @@ vi.mock('@supabase/supabase-js', () => ({
   createClient: () => ({ from, rpc }),
 }));
 
+function feedChain(rows: unknown[]) {
+  const payload = { data: rows, error: null };
+  const chain: Record<string, unknown> = {};
+  const next = () => chain;
+  chain.select = vi.fn(next);
+  chain.eq = vi.fn(next);
+  chain.not = vi.fn(next);
+  chain.lte = vi.fn(next);
+  chain.order = vi.fn(next);
+  chain.limit = vi.fn(async () => payload);
+  chain.maybeSingle = vi.fn(async () => ({
+    data: rows[0] ?? null,
+    error: null,
+  }));
+  return chain;
+}
+
 describe('GET /api/health', () => {
   beforeEach(() => {
     vi.resetModules();
@@ -27,6 +44,9 @@ describe('GET /api/health', () => {
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
     process.env.SUPABASE_SERVICE_ROLE_KEY = 'service-role';
     process.env.NEWSROOM_INGEST_KEY = 'test-ingest-key';
+    from.mockImplementation(() =>
+      feedChain([{ id: '1' }, { id: '2' }, { id: '3' }]),
+    );
   });
 
   afterEach(() => {
@@ -50,10 +70,6 @@ describe('GET /api/health', () => {
 
   it('includes published count and last_success_at', async () => {
     rpc.mockResolvedValue({ data: '2026-09-29T00:00:00.000Z', error: null });
-    select.mockReturnValue({
-      eq: () => Promise.resolve({ count: 3, error: null }),
-    });
-    from.mockReturnValue({ select });
     const { GET } = await import('../app/api/health/route');
     const res = await GET();
     const body = await res.json();
@@ -61,5 +77,6 @@ describe('GET /api/health', () => {
     expect(body.last_success_at).toBe('2026-09-29T00:00:00.000Z');
     expect(body.ingest_configured).toBe(true);
     expect(body.supabase_configured).toBe(true);
+    expect(from).toHaveBeenCalledWith('public_articles_feed');
   });
 });

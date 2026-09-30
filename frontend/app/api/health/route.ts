@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { createClient } from '@supabase/supabase-js';
 import { ingestConfigured } from '../../../lib/ingest-auth';
+import { selectPublishedArticles } from '../../../lib/supabase/published-articles';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -42,11 +43,11 @@ export async function GET() {
     let stage: string | null = null;
     let published = 0;
 
-    const { count: publishedCount } = await supabase
-      .from('articles')
-      .select('id', { count: 'exact', head: true })
-      .eq('status', 'published');
-    published = publishedCount ?? 0;
+    const listed = await selectPublishedArticles<{ id: string }>(supabase, 'id', {
+      requirePublishedAt: true,
+      limit: 50,
+    });
+    published = Array.isArray(listed.data) ? listed.data.length : listed.data ? 1 : 0;
 
     if (!lastSuccessAt) {
       const { data, error } = await supabase
@@ -59,17 +60,15 @@ export async function GET() {
       lastSuccessAt = data?.completed_at || data?.created_at || null;
       stage = data?.stage ?? null;
       if (!lastSuccessAt) {
-        const { data: latest } = await supabase
-          .from('articles')
-          .select('published_at')
-          .eq('status', 'published')
-          .not('published_at', 'is', null)
-          .order('published_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-        lastSuccessAt = latest?.published_at || null;
+        const latest = await selectPublishedArticles<{ published_at: string | null }>(
+          supabase,
+          'published_at',
+          { requirePublishedAt: true, orderBy: 'published_at', limit: 1, single: true },
+        );
+        const row = latest.data && !Array.isArray(latest.data) ? latest.data : null;
+        lastSuccessAt = row?.published_at || null;
         if (lastSuccessAt) {
-          stage = stage || 'articles';
+          stage = stage || latest.source;
         }
       }
       if (!lastSuccessAt && error && rpcError) {
