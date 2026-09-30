@@ -1,10 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-const order = vi.fn();
-const lte = vi.fn();
-const not = vi.fn();
-const eq = vi.fn();
-const select = vi.fn();
 const from = vi.fn();
 
 vi.mock('@supabase/supabase-js', () => ({
@@ -14,6 +9,7 @@ vi.mock('@supabase/supabase-js', () => ({
 describe('GET /api/public/feed.json', () => {
   beforeEach(() => {
     vi.resetModules();
+    from.mockReset();
     process.env.NEXT_PUBLIC_SUPABASE_URL = 'https://example.supabase.co';
     process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY = 'anon-key';
     const payload = {
@@ -35,13 +31,16 @@ describe('GET /api/public/feed.json', () => {
       ],
       error: null,
     };
-    const limit = vi.fn().mockResolvedValue(payload);
-    order.mockReturnValue({ limit });
-    lte.mockReturnValue({ order });
-    not.mockReturnValue({ lte });
-    eq.mockReturnValue({ not });
-    select.mockReturnValue({ eq });
-    from.mockReturnValue({ select });
+    const chain: Record<string, unknown> = {};
+    const next = () => chain;
+    chain.select = vi.fn(next);
+    chain.eq = vi.fn(next);
+    chain.not = vi.fn(next);
+    chain.lte = vi.fn(next);
+    chain.order = vi.fn(next);
+    chain.limit = vi.fn(async () => payload);
+    chain.maybeSingle = vi.fn(async () => payload);
+    from.mockImplementation(() => chain);
   });
 
   afterEach(() => {
@@ -57,6 +56,7 @@ describe('GET /api/public/feed.json', () => {
     expect(body.items[0].source_name).toBe('বিবিসি বাংলা');
     expect(body.items[0].image_credit).toBe('Wikimedia');
     expect(body.items[0].authors[0].name).toBe('বিবিসি বাংলা');
+    expect(from).toHaveBeenCalledWith('published_articles_safe');
   });
 
   it('returns 503 when supabase is unconfigured', async () => {

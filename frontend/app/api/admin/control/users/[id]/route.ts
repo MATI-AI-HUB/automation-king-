@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { requireAdmin } from '@/lib/server/require-admin';
+import { requireStaffFromRequest } from '@/lib/server/require-admin';
 import { updateUserRole, updateUserVerified, deleteUser } from '@/lib/control/user-service';
 import { logAction } from '@/lib/control/audit-service';
 
@@ -9,8 +9,9 @@ export async function PATCH(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireStaffFromRequest(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status, headers: { 'Cache-Control': 'no-store' } });
+  const admin = auth.user;
   try {
     const { id } = await params;
     const body = await req.json();
@@ -45,11 +46,12 @@ export async function PATCH(
 }
 
 export async function DELETE(
-  _req: Request,
+  req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  const admin = await requireAdmin();
-  if (!admin) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  const auth = await requireStaffFromRequest(req);
+  if (!auth.ok) return NextResponse.json({ error: auth.error }, { status: auth.status, headers: { 'Cache-Control': 'no-store' } });
+  const admin = auth.user;
   try {
     const { id } = await params;
     if (id === admin.id) {

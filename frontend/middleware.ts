@@ -70,11 +70,33 @@ export async function middleware(request: NextRequest) {
     if (!profile || !ALLOWED_ROLES.includes(profile.role)) {
       if (isApiRoute) {
         return NextResponse.json(
-          { error: 'Forbidden' },
+          { error: 'forbidden' },
           { status: 403, headers: { 'Cache-Control': 'no-store' } },
         )
       }
       return NextResponse.redirect(new URL('/', request.url))
+    }
+
+    const deskRequiresAal2 = process.env.DESK_EDITOR_REQUIRE_AAL2 === 'true'
+    const needsAal2 =
+      profile.role === 'admin' ||
+      profile.role === 'chief_editor' ||
+      (profile.role === 'desk_editor' && deskRequiresAal2)
+    if (needsAal2) {
+      const { data: aalData } = await supabase.auth.mfa.getAuthenticatorAssuranceLevel()
+      if (aalData?.currentLevel !== 'aal2') {
+        if (isApiRoute) {
+          return NextResponse.json(
+            { error: 'mfa_required' },
+            { status: 403, headers: { 'Cache-Control': 'no-store' } },
+          )
+        }
+        const mfaUrl = request.nextUrl.clone()
+        mfaUrl.pathname = '/login'
+        mfaUrl.searchParams.set('redirectedFrom', path)
+        mfaUrl.searchParams.set('mfa', '1')
+        return NextResponse.redirect(mfaUrl)
+      }
     }
 
     return supabaseResponse

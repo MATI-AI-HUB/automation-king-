@@ -2,92 +2,11 @@ import { createClient } from "npm:@supabase/supabase-js@2";
 import { handleCors, json } from "../_shared/cors.ts";
 
 const SUPABASE_URL = Deno.env.get("SUPABASE_URL")!;
-const SERVICE_ROLE = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-const BASE32 = "ABCDEFGHIJKLMNOPQRSTUVWXYZ234567";
-
-function base32Encode(bytes: Uint8Array): string {
-  let bits = 0;
-  let value = 0;
-  let output = "";
-  for (const byte of bytes) {
-    value = (value << 8) | byte;
-    bits += 8;
-    while (bits >= 5) {
-      output += BASE32[(value >>> (bits - 5)) & 31];
-      bits -= 5;
-    }
-  }
-  if (bits > 0) output += BASE32[(value << (5 - bits)) & 31];
-  return output;
-}
-
-function base32Decode(value: string): Uint8Array {
-  let bits = 0;
-  let buffer = 0;
-  const output: number[] = [];
-  for (const character of value.toUpperCase().replace(/=+$/g, "")) {
-    const index = BASE32.indexOf(character);
-    if (index < 0) continue;
-    buffer = (buffer << 5) | index;
-    bits += 5;
-    if (bits >= 8) {
-      output.push((buffer >>> (bits - 8)) & 255);
-      bits -= 8;
-    }
-  }
-  return new Uint8Array(output);
-}
-
-function randomSecret(): string {
-  const bytes = new Uint8Array(20);
-  crypto.getRandomValues(bytes);
-  return base32Encode(bytes);
-}
-
-function toArrayBuffer(bytes: Uint8Array): ArrayBuffer {
-  const copy = new Uint8Array(bytes.byteLength);
-  copy.set(bytes);
-  return copy.buffer as ArrayBuffer;
-}
-
-async function hmacSha1(key: Uint8Array, message: Uint8Array): Promise<Uint8Array> {
-  const cryptoKey = await crypto.subtle.importKey(
-    "raw",
-    toArrayBuffer(key),
-    { name: "HMAC", hash: "SHA-1" },
-    false,
-    ["sign"],
-  );
-  return new Uint8Array(await crypto.subtle.sign("HMAC", cryptoKey, toArrayBuffer(message)));
-}
-
-async function totp(secret: string, counter: number): Promise<string> {
-  const message = new Uint8Array(8);
-  let value = counter;
-  for (let index = 7; index >= 0; index -= 1) {
-    message[index] = value & 255;
-    value = Math.floor(value / 256);
-  }
-  const digest = await hmacSha1(base32Decode(secret), message);
-  const offset = digest[digest.length - 1] & 15;
-  const code = ((digest[offset] & 127) << 24) |
-    ((digest[offset + 1] & 255) << 16) |
-    ((digest[offset + 2] & 255) << 8) |
-    (digest[offset + 3] & 255);
-  return String(code % 1_000_000).padStart(6, "0");
-}
-
-async function verifyTotp(secret: string, code: string): Promise<boolean> {
-  const counter = Math.floor(Date.now() / 30_000);
-  for (const offset of [-1, 0, 1]) {
-    if (await totp(secret, counter + offset) === code) return true;
-  }
-  return false;
-}
+const ANON_KEY = Deno.env.get("SUPABASE_ANON_KEY")!;
 
 function callerClient(req: Request) {
   const authorization = req.headers.get("Authorization") ?? "";
-  return createClient(SUPABASE_URL, SERVICE_ROLE, {
+  return createClient(SUPABASE_URL, ANON_KEY, {
     global: { headers: { Authorization: authorization } },
     auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
   });
@@ -102,40 +21,41 @@ Deno.serve(async (req: Request) => {
   const { data: { user }, error: userError } = await client.auth.getUser();
   if (userError || !user) return json({ error: "unauthorized" }, 401);
 
-  if (action === "enable") {
-    const secret = randomSecret();
-    const { error } = await client.from("profiles").update({
-      two_factor_secret: secret,
-      two_factor_enabled: true,
-    }).eq("id", user.id);
-    if (error) return json({ error: "could not enable 2fa" }, 500);
-    await client.from("audit_log").insert({ actor_id: user.id, action: "2fa_enable", detail: {} });
+  if (action === "enable" || action === "enroll") {
+    const { data, error } = await client.auth.mfa.enroll({
+      factorType: "totp",
+      issuer: "BanglarVoice",
+      friendlyName: user.email ?? user.id,
+    });
+    if (error || !data) return json({ error: error?.message ?? "could not enroll totp" }, 500);
     return json({
-      secret,
-      otpauth_url: `otpauth://totp/BanglarVoice:${encodeURIComponent(user.email ?? user.id)}?secret=${secret}&issuer=BanglarVoice`,
+      factor_id: data.id,
+      qr_code: data.totp.qr_code,
+      secret: data.totp.secret,
+      otpauth_url: data.totp.uri,
     });
   }
 
-  const { data: profile, error: profileError } = await client
-    .from("profiles")
-    .select("two_factor_secret")
-    .eq("id", user.id)
-    .single();
-  if (profileError || !profile?.two_factor_secret) return json({ error: "2fa not enabled" }, 400);
-
   const body = await req.json().catch(() => ({}));
-  const code = String(body.code ?? "");
-  const valid = /^\d{6}$/.test(code) && await verifyTotp(profile.two_factor_secret, code);
+  const code = String(body.code ?? body.token ?? "");
+  const factorId = String(body.factor_id ?? body.factorId ?? "");
 
-  if (action === "verify") return json({ valid });
-  if (action === "disable") {
-    if (!valid) return json({ error: "invalid code" }, 400);
-    const { error } = await client.from("profiles").update({
-      two_factor_secret: "",
-      two_factor_enabled: false,
-    }).eq("id", user.id);
-    if (error) return json({ error: "could not disable 2fa" }, 500);
-    await client.from("audit_log").insert({ actor_id: user.id, action: "2fa_disable", detail: {} });
+  if (action === "challenge") {
+    const { data, error } = await client.auth.mfa.challenge({ factorId });
+    if (error || !data) return json({ error: error?.message ?? "challenge failed" }, 400);
+    return json({ challenge_id: data.id, expires_at: data.expires_at });
+  }
+
+  if (action === "verify") {
+    const challengeId = String(body.challenge_id ?? body.challengeId ?? "");
+    const { data, error } = await client.auth.mfa.verify({ factorId, challengeId, code });
+    if (error) return json({ error: error.message, valid: false }, 400);
+    return json({ valid: true, aal: data?.user?.aal ?? "aal2" });
+  }
+
+  if (action === "unenroll" || action === "disable") {
+    const { error } = await client.auth.mfa.unenroll({ factorId });
+    if (error) return json({ error: error.message }, 400);
     return json({ ok: true });
   }
 

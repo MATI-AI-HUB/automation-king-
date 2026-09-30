@@ -1,8 +1,8 @@
 name: Automated DB & Storage Backup
 on:
   schedule:
-    - cron: '0 2 * * 0' # প্রতি রবিবার সকাল ৮টা ঢাকা সময় (UTC 2:00 AM)
-  workflow_dispatch: # ম্যানুয়াল ট্রিগারও সুবিধা
+    - cron: '0 2 * * 0'
+  workflow_dispatch:
 
 jobs:
   backup-db:
@@ -11,11 +11,28 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@v4
-      
-      - name: Install PostgreSQL client & AWS CLI
+
+      - name: Mask connection material
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+          R2_ENDPOINT: ${{ secrets.R2_ENDPOINT }}
+        run: |
+          if [ -n "$SUPABASE_DB_URL" ]; then
+            echo "::add-mask::$SUPABASE_DB_URL"
+          fi
+          if [ -n "$R2_ENDPOINT" ]; then
+            echo "::add-mask::$R2_ENDPOINT"
+          fi
+
+      - name: Install PostgreSQL 16 client, age, AWS CLI
+        env:
+          DEBIAN_FRONTEND: noninteractive
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client awscli zip unzip
+          sudo apt-get install -y postgresql-common ca-certificates curl gnupg age awscli
+          sudo /usr/share/postgresql-common/pgdg/apt.postgresql.org.sh -y
+          sudo apt-get install -y postgresql-client-16
+          pg_dump --version
 
       - name: Generate Timestamp
         id: timestamp
@@ -25,15 +42,42 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
+          set -euo pipefail
+          test -n "$SUPABASE_DB_URL"
           echo "Starting database dump..."
           pg_dump "$SUPABASE_DB_URL" \
             --format=custom \
             --compress=9 \
             --no-owner \
-            --no-acl \
             --schema=public \
+            --schema=auth \
+            --schema=storage \
             --file=backup.dump
-          echo "✅ DB dump completed: backup.dump"
+          test -s backup.dump
+          pg_restore -l backup.dump > backup.toc
+          test -s backup.toc
+          echo "DB dump verified (non-zero, pg_restore -l ok)"
+
+      - name: Encrypt dump
+        env:
+          BACKUP_AGE_RECIPIENT: ${{ secrets.BACKUP_AGE_RECIPIENT }}
+          BACKUP_OPENSSL_PASSPHRASE: ${{ secrets.BACKUP_OPENSSL_PASSPHRASE }}
+        run: |
+          set -euo pipefail
+          if [ -n "${BACKUP_AGE_RECIPIENT:-}" ]; then
+            echo "::add-mask::$BACKUP_AGE_RECIPIENT"
+            age -r "$BACKUP_AGE_RECIPIENT" -o backup.dump.age backup.dump
+            ARTIFACT=backup.dump.age
+          elif [ -n "${BACKUP_OPENSSL_PASSPHRASE:-}" ]; then
+            echo "::add-mask::$BACKUP_OPENSSL_PASSPHRASE"
+            openssl enc -aes-256-cbc -pbkdf2 -salt -in backup.dump -out backup.dump.enc -pass env:BACKUP_OPENSSL_PASSPHRASE
+            ARTIFACT=backup.dump.enc
+          else
+            echo "Set BACKUP_AGE_RECIPIENT or BACKUP_OPENSSL_PASSPHRASE before enabling encrypted backups."
+            exit 1
+          fi
+          test -s "$ARTIFACT"
+          echo "ARTIFACT=$ARTIFACT" >> "$GITHUB_ENV"
 
       - name: Upload to Cloudflare R2
         env:
@@ -42,21 +86,29 @@ jobs:
           AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
           AWS_DEFAULT_REGION: auto
         run: |
-          echo "Uploading to R2..."
-          aws s3 cp backup.dump "s3://banglarvoice-backups/db/${DATE}_backup.dump" \
+          set -euo pipefail
+          echo "Uploading encrypted artifact..."
+          aws s3 cp "$ARTIFACT" "s3://banglarvoice-backups/db/${DATE}_${ARTIFACT}" \
             --endpoint-url "$R2_ENDPOINT" \
             --sse AES256 \
-            --storage-class DEEP_ARCHIVE
-          echo "✅ Backup uploaded to R2"
+            --storage-class STANDARD
+          echo "Backup uploaded"
+
+      - name: Upload GitHub artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: db-backup-${{ env.DATE }}
+          path: ${{ env.ARTIFACT }}
+          retention-days: 7
 
       - name: Cleanup Local Files
-        run: rm -f backup.dump
         if: always()
+        run: rm -f backup.dump backup.dump.age backup.dump.enc backup.toc
 
   notify-success:
     needs: backup-db
     runs-on: ubuntu-latest
     if: success()
     steps:
-      - name: Send Success Notification (Optional)
-        run: echo "✅ Production backup completed successfully at $(date -u)"
+      - name: Send Success Notification
+        run: echo "Production backup completed at $(date -u)"

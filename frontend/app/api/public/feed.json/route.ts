@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 import { createClient } from '@supabase/supabase-js';
+import { selectPublishedArticles } from '@/lib/supabase/published-articles';
 
 const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://banglarvoice24news.com';
 
@@ -42,14 +43,12 @@ function getSupabase() {
 export async function GET() {
   try {
     const supabase = getSupabase();
-    const { data: articles, error } = await supabase
-      .from('articles')
-      .select('*')
-      .eq('status', 'published')
-      .not('published_at', 'is', null)
-      .lte('published_at', new Date().toISOString())
-      .order('published_at', { ascending: false })
-      .limit(50);
+    const { data: articles, error } = await selectPublishedArticles(supabase, '*', {
+      requirePublishedAt: true,
+      notFuture: true,
+      orderBy: 'published_at',
+      limit: 50,
+    });
 
     if (error) throw error;
 
@@ -60,7 +59,7 @@ export async function GET() {
       feed_url: `${SITE}/api/public/feed.json`,
       description: 'বাংলাদেশ ও বিশ্ব — নিরপেক্ষ, দায়িত্বশীল ও নির্ভরযোগ্য সাংবাদিকতা',
       language: 'bn',
-      items: (articles || []).map((a) => {
+      items: (Array.isArray(articles) ? articles : []).map((a) => {
         const cat = resolveCategory(a.category_key || a.category);
         const tags = [cat.key, cat.label].filter((x) => x);
         const sourceName = a.source_name || 'সূত্র';
