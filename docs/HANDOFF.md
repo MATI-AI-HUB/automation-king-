@@ -10,8 +10,8 @@ Git author (বাধ্যতামূলক): `matiailearninghub@gmail.com`
 - `frontend/vercel.json`: Framework Next.js, Install `npm ci`, Build `npm run build`, ignoreCommand `bash scripts/vercel-ignore.sh`
 - Node **20.x**: `frontend/package.json` `engines`, `frontend/.nvmrc` (`22` থেকে নামানো)
 - `frontend/.npmrc`: `legacy-peer-deps=true` যাতে `npm ci` Hobby/CI-তে peer conflict না করে
-- `tests/vercel-ignore.test.ts`: skip vs build (non-main ref, HEAD^, `VERCEL_GIT_PREVIOUS_SHA`, worker-only, initial commit)
-- Git log সিমুলেশন: `p1-owner-hardening` non-main → Vercel **SKIP**; `main` এ frontend diff → **BUILD**
+- `vercel-ignore.sh` আর non-main ব্রাঞ্চ skip করে না (Hobby Canceled-এর মূল কারণ ছিল)
+- ফিড রিলেশন অর্ডার: `public_articles_feed` → `published_articles_safe` → `articles` (`42501`/`PGRST205` ফলব্যাক)
 - `frontend/.env.example`: সব `process.env.*` ইনভেন্টরি, Production/Preview/Both + Server-only/Public কমেন্ট, মান ছাড়া
 - P0 স্ক্যান: `NEXT_PUBLIC_SERVICE_ROLE` / `NEXT_PUBLIC_*SECRET*` / `NEXT_PUBLIC_OPENAI_KEY` **নেই**
 - CI: frontend job এখন `lint` → `typecheck` → `test` → `build`; ব্রাঞ্চ ট্রিগার `p1-owner-hardening`
