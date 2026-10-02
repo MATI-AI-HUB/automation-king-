@@ -360,7 +360,7 @@ async function acquireCronLock(supabase: SupabaseClient) {
     .from('news_pipeline_runs')
     .select('id, created_at, completed_at')
     .eq('status', 'running')
-    .order('created_at', { ascending: false })
+    .order('created_at', { ascending: true })
     .limit(1)
     .maybeSingle()
 
@@ -763,7 +763,15 @@ function isRequestAuthorized(request: Request) {
 }
 
 export async function GET(request: Request) {
-  return POST(request)
+  const cronSecret = process.env.CRON_SECRET
+  const authorization = request.headers.get('authorization')
+  const bearer = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null
+
+  if (!isAuthorized(bearer, cronSecret)) {
+    return jsonError('Unauthorized', 401)
+  }
+
+  return runCronTrigger()
 }
 
 export async function POST(request: Request) {
@@ -778,6 +786,10 @@ export async function POST(request: Request) {
     return jsonError('Unauthorized', 401)
   }
 
+  return runCronTrigger()
+}
+
+async function runCronTrigger() {
   const supabaseUrl =
     process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL
   const serviceRoleKey = process.env.SUPABASE_SERVICE_ROLE_KEY
@@ -820,11 +832,15 @@ export async function POST(request: Request) {
 
   const sourceOutcomes: Record<string, SourceFetchOutcome> = {}
   const disabledSources: string[] = []
-  const previousRuns = await recentSourceRuns(supabase)
-  const autoPublish = isAutoPublish()
-  const scoreFloor = minAiScore()
+  let finalStatus: 'success' | 'partial' | 'failed' = 'failed'
+  let aiConfig: AIConfig | null = null
 
-  const { data: sources, error: sourcesError } = await supabase
+  try {
+    const previousRuns = await recentSourceRuns(supabase)
+    const autoPublish = isAutoPublish()
+    const scoreFloor = minAiScore()
+
+    const { data: sources, error: sourcesError } = await supabase
     .from('news_sources')
     .select('id, name, feed_url, enabled, kill_switch, interval_minutes')
     .eq('enabled', true)
@@ -836,20 +852,21 @@ export async function POST(request: Request) {
   } else {
     await runPool((sources ?? []) as Source[], MAX_CONCURRENCY, async (source) => {
       const nowIso = new Date().toISOString()
+      const sourceKey = source.id || source.feed_url
       try {
         if (
           !isSourceDue(
-            lastFetchAt(previousRuns, source.id),
+            lastFetchAt(previousRuns, sourceKey),
             source.interval_minutes || PIPELINE_INTERVAL_MINUTES,
           )
         ) {
-          sourceOutcomes[source.id] = { status: 'skipped_not_due', at: nowIso }
+          sourceOutcomes[sourceKey] = { status: 'skipped_not_due', at: nowIso }
           return
         }
         const items = await fetchFeed(source.feed_url, deadline)
         stats.sourcesProcessed += 1
         stats.fetched += items.length
-        sourceOutcomes[source.id] = { status: 'ok', http_status: 200, at: nowIso }
+        sourceOutcomes[sourceKey] = { status: 'ok', http_status: 200, at: nowIso }
 
         for (const item of items) {
           candidates.push({ source, item })
@@ -863,13 +880,13 @@ export async function POST(request: Request) {
           code,
         })
         if (code === 'feed_fetch_http_403') {
-          sourceOutcomes[source.id] = { status: '403', http_status: 403, at: nowIso }
-          if (shouldDisableAfter403(previousRuns, source.id)) {
+          sourceOutcomes[sourceKey] = { status: '403', http_status: 403, at: nowIso }
+          if (shouldDisableAfter403(previousRuns, sourceKey)) {
             await supabase
               .from('news_sources')
               .update({ enabled: false, updated_at: new Date().toISOString() })
               .eq('id', source.id)
-            disabledSources.push(source.id)
+            disabledSources.push(sourceKey)
             console.warn('[newsroom] disabled news_source after repeated 403', {
               source_id: source.id,
               threshold: FEED_403_DISABLE_THRESHOLD,
@@ -877,13 +894,11 @@ export async function POST(request: Request) {
             errorCodes.add('feed_fetch_http_403_disabled')
           }
         } else {
-          sourceOutcomes[source.id] = { status: 'error', at: nowIso }
+          sourceOutcomes[sourceKey] = { status: 'error', at: nowIso }
         }
       }
     })
   }
-
-  let aiConfig: AIConfig | null = null
 
   if (candidates.length > 0) {
     try {
@@ -1219,67 +1234,66 @@ export async function POST(request: Request) {
     }
   }
 
-  const status =
+  finalStatus =
     stats.failed === 0
       ? 'success'
       : stats.ingested > 0
         ? 'partial'
         : 'failed'
+  } catch (runError) {
+    stats.failed += 1
+    errorCodes.add('run_error')
+    console.error('[newsroom] cron run failed', {
+      message: runError instanceof Error ? runError.message : String(runError),
+    })
+  } finally {
+    const details = {
+      sources_processed: stats.sourcesProcessed,
+      articles_ingested: stats.ingested,
+      articles_skipped: stats.skipped,
+      articles_failed: stats.failed,
+      articles_queued: stats.queued,
+      articles_pending: stats.pending,
+      ai_provider: aiConfig?.provider ?? null,
+      error_codes: [...errorCodes],
+      skip_reasons: [...skipReasons],
+      error_types: [...errorCodes],
+      sources: sourceOutcomes,
+      disabled: disabledSources,
+      locked_by: 'cron',
+    }
 
-  const details = {
-    sources_processed: stats.sourcesProcessed,
-    articles_ingested: stats.ingested,
-    articles_skipped: stats.skipped,
-    articles_failed: stats.failed,
-    articles_queued: stats.queued,
-    articles_pending: stats.pending,
-    ai_provider: aiConfig?.provider ?? null,
-    error_codes: [...errorCodes],
-    skip_reasons: [...skipReasons],
-    error_types: [...errorCodes],
-    sources: sourceOutcomes,
-    disabled: disabledSources,
-    locked_by: 'cron',
+    const { error: runUpdateError } = await supabase
+      .from('news_pipeline_runs')
+      .update({
+        status: finalStatus,
+        fetched: stats.fetched,
+        queued: stats.queued,
+        processed: stats.processed,
+        published: stats.ingested,
+        pending_review: stats.pending,
+        skipped: stats.skipped,
+        failed: stats.failed,
+        duration_ms: Date.now() - startedAt,
+        details,
+        error_message: errorCodes.size > 0 ? [...errorCodes].join(',') : null,
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', lock.runId)
+
+    if (runUpdateError) {
+      console.error('[newsroom] run logging failed', {
+        run_id: lock.runId,
+        message: runUpdateError.message,
+      })
+    }
   }
 
   const durationMs = Date.now() - startedAt
-  const { error: runUpdateError } = await supabase
-    .from('news_pipeline_runs')
-    .update({
-      status,
-      fetched: stats.fetched,
-      queued: stats.queued,
-      processed: stats.processed,
-      published: stats.ingested,
-      pending_review: stats.pending,
-      skipped: stats.skipped,
-      failed: stats.failed,
-      duration_ms: durationMs,
-      details,
-      error_message: errorCodes.size > 0 ? [...errorCodes].join(',') : null,
-      completed_at: new Date().toISOString(),
-    })
-    .eq('id', lock.runId)
-
-  if (runUpdateError) {
-    return NextResponse.json(
-      {
-        ok: false,
-        run_id: lock.runId,
-        sources_processed: stats.sourcesProcessed,
-        articles_ingested: stats.ingested,
-        articles_skipped: stats.skipped,
-        articles_failed: stats.failed + 1,
-        duration_ms: durationMs,
-        error: 'Run completed, but pipeline logging failed',
-      },
-      { status: 500 },
-    )
-  }
 
   return NextResponse.json(
     {
-      ok: status !== 'failed',
+      ok: finalStatus !== 'failed',
       run_id: lock.runId,
       sources_processed: stats.sourcesProcessed,
       articles_ingested: stats.ingested,
@@ -1287,6 +1301,6 @@ export async function POST(request: Request) {
       articles_failed: stats.failed,
       duration_ms: durationMs,
     },
-    { status: status === 'failed' ? 500 : 200 },
+    { status: finalStatus === 'failed' ? 500 : 200 },
   )
 }

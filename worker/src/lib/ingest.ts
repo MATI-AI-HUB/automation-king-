@@ -1,6 +1,7 @@
 import type { WorkerConfig } from "../config.js";
 import type { DraftArticle } from "../agents/types.js";
 import { contentHash, supabaseAdmin } from "./pipeline.js";
+import { computeRiskLevel } from "./publish-gate.js";
 
 export interface PublishResult {
   ok: boolean;
@@ -165,7 +166,9 @@ export async function publishViaSupabase(cfg: WorkerConfig, draft: DraftArticle)
       image_is_representational: representational,
       is_fallback: draft.imageSource === "brand" || rewriteIsFallback,
       origin: "aggregated",
-      risk_level: draft.riskLevel || "low",
+      risk_level:
+        draft.riskLevel ||
+        computeRiskLevel(draft.titleBn, draft.contentBn, draft.raw.sourceCategory).level,
       review_reason: draft.reviewReason || null,
       media_type: imageUrl ? "image" : "none",
       ai_confidence: Math.max(0, Math.min(1, draft.aiScore / 100)),
