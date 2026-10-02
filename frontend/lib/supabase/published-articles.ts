@@ -17,15 +17,18 @@ export type PublishedArticleRow = {
   source_name?: string | null;
   source_url?: string | null;
   image_credit?: string | null;
+  image_alt_bn?: string | null;
+  image_is_representational?: boolean | null;
+  is_fallback?: boolean | null;
   canonical_url?: string | null;
   origin?: string | null;
 };
 
 export const PUBLISHED_ARTICLE_COLUMNS =
-  'id, title_bn, content_bn, excerpt_bn, category, category_key, thumbnail_url, featured_image, status, published_at, source_name, source_url, image_credit, canonical_url, origin';
+  'id, title_bn, content_bn, excerpt_bn, category, category_key, thumbnail_url, featured_image, status, published_at, source_name, source_url, image_credit, image_alt_bn, image_is_representational, is_fallback, canonical_url, origin';
 
 export const PUBLIC_ARTICLE_DETAIL_COLUMNS =
-  'id, title_bn, title_en, content_bn, content_en, excerpt_bn, category, category_key, thumbnail_url, featured_image, status, published_at, created_at, source_name, source_url, image_credit, canonical_url, origin';
+  'id, title_bn, title_en, content_bn, content_en, excerpt_bn, category, category_key, thumbnail_url, featured_image, status, published_at, created_at, source_name, source_url, image_credit, image_alt_bn, image_is_representational, is_fallback, canonical_url, origin';
 
 const NARROW_FEED_COLUMNS =
   'id, title_bn, category, published_at, thumbnail_url, status';
@@ -63,24 +66,6 @@ export async function fetchPublishedArticlesFeed(
 
   if (!viewFull.error) return (viewFull.data || []) as PublishedArticleRow[];
 
-  const primary = await supabase
-    .from('articles')
-    .select(PUBLISHED_ARTICLE_COLUMNS)
-    .eq('status', 'published')
-    .order('published_at', { ascending: false })
-    .limit(50);
-
-  if (!primary.error) return (primary.data || []) as PublishedArticleRow[];
-
-  const safe = await supabase
-    .from('articles')
-    .select(NARROW_FEED_COLUMNS)
-    .eq('status', 'published')
-    .order('published_at', { ascending: false })
-    .limit(50);
-
-  if (!safe.error) return (safe.data || []) as PublishedArticleRow[];
-
   const viewNarrow = await supabase
     .from('public_articles_feed')
     .select(NARROW_FEED_COLUMNS)
@@ -90,7 +75,7 @@ export async function fetchPublishedArticlesFeed(
   if (viewNarrow.error && !isMissingRelation(viewNarrow.error) && !isMissingRelation(viewFull.error)) {
     throw viewNarrow.error;
   }
-  if (viewNarrow.error) throw primary.error || safe.error || viewNarrow.error;
+  if (viewNarrow.error) throw viewFull.error || viewNarrow.error;
   return (viewNarrow.data || []) as PublishedArticleRow[];
 }
 
@@ -107,15 +92,6 @@ export async function fetchPublishedArticleById(
   if (!detail.error && detail.data) return detail.data as PublishedArticleRow;
   if (!detail.error && detail.data === null) return null;
 
-  const primary = await supabase
-    .from('articles')
-    .select(PUBLISHED_ARTICLE_COLUMNS)
-    .eq('id', id)
-    .eq('status', 'published')
-    .maybeSingle();
-
-  if (!primary.error) return (primary.data as PublishedArticleRow | null) ?? null;
-
   const viewFull = await supabase
     .from('public_articles_feed')
     .select(PUBLISHED_ARTICLE_COLUMNS)
@@ -123,15 +99,9 @@ export async function fetchPublishedArticleById(
     .maybeSingle();
 
   if (!viewFull.error) return (viewFull.data as PublishedArticleRow | null) ?? null;
-
-  const safe = await supabase
-    .from('articles')
-    .select(NARROW_FEED_COLUMNS)
-    .eq('id', id)
-    .eq('status', 'published')
-    .maybeSingle();
-
-  if (!safe.error) return (safe.data as PublishedArticleRow | null) ?? null;
+  if (viewFull.error && !isMissingRelation(viewFull.error) && !isMissingRelation(detail.error)) {
+    throw viewFull.error;
+  }
 
   const viewNarrow = await supabase
     .from('public_articles_feed')

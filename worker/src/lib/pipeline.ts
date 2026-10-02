@@ -6,6 +6,16 @@ export const MAX_PUBLISH_PER_CYCLE = 20;
 export const MAX_PROCESS_PER_CYCLE = 80;
 export const HEALTH_STALE_HOURS = 6;
 export const RATE_LIMIT_PER_HOUR = 40;
+export const ITEM_MAX_AGE_MS = 48 * 60 * 60 * 1000;
+export const MIN_AI_SCORE = 40;
+export const MIN_AI_CONFIDENCE = 0.4;
+
+export function isWithinLookback(iso: string | undefined, now = Date.now(), windowMs = ITEM_MAX_AGE_MS): boolean {
+  if (!iso) return true;
+  const t = new Date(iso).getTime();
+  if (Number.isNaN(t)) return true;
+  return now - t <= windowMs;
+}
 
 export async function rateLimitOk(cfg: WorkerConfig): Promise<{ ok: boolean; publishedLastHour: number }> {
   const client = supabaseAdmin(cfg);

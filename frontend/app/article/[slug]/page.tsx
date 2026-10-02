@@ -42,6 +42,8 @@ type ArticleData = {
   source_url?: string;
   source_published_at?: string;
   image_credit?: string;
+  image_alt_bn?: string;
+  image_is_representational?: boolean;
   category_key?: string;
   verification_status?: string;
   verification_score?: number;
@@ -134,13 +136,13 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const displayDek = locale === 'en' ? (a.dek_en || a.dek_bn) : a.dek_bn;
 
   const image = a.featured_image
-    ? { url: a.featured_image, alt: displayTitle }
+    ? { url: a.featured_image, alt: a.image_alt_bn || displayTitle }
     : undefined;
 
   return {
     title: displayTitle,
     description: displayDek || a.seo_description,
-    alternates: { canonical: `/article/${slug}` },
+    alternates: { canonical: `${BASE}/article/${slug}` },
     openGraph: {
       title: displayTitle,
       description: displayDek,
@@ -149,7 +151,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       locale: locale === 'en' ? 'en_US' : 'bn_BD',
       publishedTime: a.published_at,
       authors: a.author_name ? [a.author_name] : undefined,
-      images: image ? [image] : undefined,
+      images: image ? [image] : [{ url: `${BASE}/banglar-voice-logo.png`, alt: 'বাংলার ভয়েস' }],
     },
   };
 }
@@ -224,8 +226,11 @@ export default async function ArticlePage({ params }: PageProps) {
         </span>
       </div>
       {a.featured_image && (
-        <img src={a.featured_image} alt={displayTitle} className="mt-6 aspect-video w-full rounded object-cover" />
+        <img src={a.featured_image} alt={a.image_alt_bn || displayTitle} className="mt-6 aspect-video w-full rounded object-cover" />
       )}
+      {a.image_is_representational ? (
+        <p className="mt-2 text-xs font-semibold text-neutral-500">প্রতীকী ছবি</p>
+      ) : null}
       {a.image_credit ? (
         <p className="mt-2 text-xs text-neutral-500">ছবি: {a.image_credit}</p>
       ) : null}

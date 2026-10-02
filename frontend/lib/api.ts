@@ -114,6 +114,9 @@ type SupabaseArticle = {
   source_url?: string | null;
   source_name?: string | null;
   image_credit?: string | null;
+  image_alt_bn?: string | null;
+  image_is_representational?: boolean | null;
+  is_fallback?: boolean | null;
   canonical_url?: string | null;
   origin?: string | null;
 };
@@ -156,6 +159,8 @@ function mapArticle(row: SupabaseArticle | null | undefined): FeedArticle | null
     source_name: row.source_name || '',
     source_url: row.source_url || row.canonical_url || '',
     image_credit: row.image_credit || '',
+    image_alt_bn: row.image_alt_bn || undefined,
+    image_is_representational: Boolean(row.image_is_representational || row.is_fallback),
     origin: row.origin === 'original' ? 'original' : 'aggregated',
   };
 }
@@ -178,6 +183,7 @@ type PublicFeedItem = {
   source_name?: string;
   source_url?: string;
   image_credit?: string;
+  image_is_representational?: boolean;
   origin?: 'aggregated' | 'original';
   external_url?: string;
 };
@@ -210,6 +216,7 @@ export function publicFeedItemToArticle(item: PublicFeedItem): FeedArticle {
     source_name: item.source_name || '',
     source_url: item.source_url || item.external_url || '',
     image_credit: item.image_credit || '',
+    image_is_representational: Boolean(item.image_is_representational),
     origin: item.origin === 'original' ? 'original' : 'aggregated',
   };
 }
@@ -278,6 +285,8 @@ export const api = {
         source_url: row.source_url || row.canonical_url || '',
         source_name: row.source_name || '',
         image_credit: row.image_credit || '',
+        image_alt_bn: row.image_alt_bn || '',
+        image_is_representational: Boolean(row.image_is_representational || row.is_fallback),
         tags: [] as string[],
       };
     } catch {

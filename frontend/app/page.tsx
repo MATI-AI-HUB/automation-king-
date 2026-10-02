@@ -35,6 +35,7 @@ const toBento = (a: FeedArticle, locale: Locale) => ({
   source_name: a.source_name,
   source_url: a.source_url,
   image_credit: a.image_credit,
+  image_is_representational: a.image_is_representational,
   origin: a.origin,
 });
 
