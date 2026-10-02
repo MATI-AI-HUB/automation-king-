@@ -26,7 +26,7 @@ export async function GET() {
       .slice(0, 30)
       .map((a) => ({
         id: a.id,
-        title_bn: a.title_bn,
+        title_bn: a.title_bn || '',
         excerpt_bn: a.excerpt_bn ?? null,
         published_at: a.published_at ?? null,
         source_name: a.source_name ?? null,

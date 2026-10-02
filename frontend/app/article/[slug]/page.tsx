@@ -83,8 +83,7 @@ function sanitizeHtml(html: string): string {
 
 type LoadResult =
   | { status: 'ok'; article: ArticleData }
-  | { status: 'missing' }
-  | { status: 'unavailable' };
+  | { status: 'missing' };
 
 function mockArticle(slug: string): ArticleData | null {
   if (process.env.NODE_ENV === 'production') return null;
@@ -110,11 +109,13 @@ function mockArticle(slug: string): ArticleData | null {
 async function loadArticle(slug: string, _locale: Locale = 'bn'): Promise<LoadResult> {
   try {
     const a = (await api.article(slug)) as Partial<ArticleData> | null;
-    if (a && a.slug) return { status: 'ok', article: a as ArticleData };
+    if (a && a.slug && (a.title_bn || a.body_bn)) {
+      return { status: 'ok', article: a as ArticleData };
+    }
   } catch {
     const demo = mockArticle(slug);
     if (demo) return { status: 'ok', article: demo };
-    return { status: 'unavailable' };
+    return { status: 'missing' };
   }
 
   const demo = mockArticle(slug);
@@ -127,10 +128,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   const cookieStore = await cookies();
   const locale = getLocaleFromCookie(cookieStore.get(LOCALE_COOKIE)?.value);
   const loaded = await loadArticle(slug, locale);
-  if (loaded.status === 'unavailable') {
-    return { title: 'সংবাদ লোড হয়নি', robots: { index: false, follow: false } };
-  }
-  if (loaded.status !== 'ok') return { title: 'পাতা নেই' };
+  if (loaded.status !== 'ok') return { title: 'পাতা নেই', robots: { index: false, follow: false } };
   const a = loaded.article;
   const displayTitle = locale === 'en' ? (a.title_en || a.title_bn) : a.title_bn;
   const displayDek = locale === 'en' ? (a.dek_en || a.dek_bn) : a.dek_bn;
@@ -162,23 +160,7 @@ export default async function ArticlePage({ params }: PageProps) {
   const locale = getLocaleFromCookie(cookieStore.get(LOCALE_COOKIE)?.value);
 
   const loaded = await loadArticle(slug, locale);
-  if (loaded.status === 'unavailable') {
-    return (
-      <main className="mx-auto max-w-3xl px-4 py-16 text-center">
-        <h1 className="font-serifbn text-2xl font-bold">সংবাদ এই মুহূর্তে লোড করা যায়নি</h1>
-        <p className="mt-3 text-neutral-600 dark:text-neutral-300">
-          ব্যাকএন্ড সংযোগ ব্যর্থ হয়েছে। এই পাতাটি নেই বলে ধরা হয়নি। পরে আবার চেষ্টা করুন।
-        </p>
-        <a
-          href={`/article/${encodeURIComponent(slug)}`}
-          className="mt-6 inline-flex items-center justify-center rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-white"
-        >
-          আবার চেষ্টা করুন
-        </a>
-      </main>
-    );
-  }
-  if (loaded.status !== 'ok' || !loaded.article.slug) notFound();
+  if (loaded.status !== 'ok' || !loaded.article?.slug || !loaded.article.title_bn) notFound();
   const a = loaded.article;
 
   const displayTitle = locale === 'en' ? (a.title_en || a.title_bn) : a.title_bn;

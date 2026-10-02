@@ -63,7 +63,10 @@ body {
 }
 
 .font-serifbn {
-  font-family: var(--font-serif-bn), 'Noto Serif Bengali', serif;
+  font-family: var(--font-serif-bn), 'Noto Serif Bengali', 'Noto Sans Bengali', serif;
+  line-height: 1.5;
+  font-feature-settings: 'kern' 1, 'liga' 1, 'locl' 1;
+  text-rendering: optimizeLegibility;
 }
 
 .line-clamp-2 {

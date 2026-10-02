@@ -92,7 +92,7 @@ export default async function HomePage() {
         </span>
         <span aria-hidden="true" className="h-4 w-px bg-crimson/60" />
         <span className="inline-flex items-baseline gap-1.5">
-          <span className="font-serifbn text-lg font-black leading-none text-crimson">
+          <span className="font-sansbn text-lg font-black leading-none text-crimson">
             24
           </span>
           <span className="text-xs font-black uppercase tracking-[0.22em] text-ink/70 dark:text-paper/70">
@@ -100,7 +100,7 @@ export default async function HomePage() {
           </span>
         </span>
       </div>
-        <h1 className="font-serifbn text-2xl font-extrabold leading-tight md:text-3xl">
+        <h1 className="font-serifbn text-2xl font-extrabold leading-snug md:text-3xl">
           {t(locale, "hero_title")}
         </h1>
         <p className="mx-auto mt-3 max-w-2xl text-lg text-neutral-600 dark:text-neutral-300">

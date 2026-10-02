@@ -36,7 +36,7 @@ const CATEGORY_LABELS: Record<string, string> = {
   tech: 'প্রযুক্তি',
   health: 'স্বাস্থ্য',
   education: 'শিক্ষা',
-  international: 'আন্তর্জাতিক',
+  international: 'বিশ্ব',
   city: 'নগর',
 };
 
@@ -131,7 +131,8 @@ function estimateReadTime(content: string): number {
   return Math.max(1, Math.round(content.length / 750));
 }
 
-function mapArticle(row: SupabaseArticle): FeedArticle {
+function mapArticle(row: SupabaseArticle | null | undefined): FeedArticle | null {
+  if (!row || typeof row.id !== 'string' || !row.id) return null;
   const body = row.content_bn || row.excerpt_bn || '';
   const summary = stripHtml(row.excerpt_bn || body).slice(0, 220);
   const pubIso = row.published_at || row.created_at || undefined;
@@ -220,7 +221,10 @@ export const api = {
     try {
       const { fetchPublishedArticlesFeed } = await import('./supabase/published-articles');
       const rows = await fetchPublishedArticlesFeed();
-      const items = (rows as SupabaseArticle[]).map(mapArticle).slice(0, limit);
+      const items = (rows as SupabaseArticle[])
+        .map(mapArticle)
+        .filter((item): item is FeedArticle => item !== null)
+        .slice(0, limit);
       if (items.length) return { items };
     } catch {
       /* public JSON feed fallback */
@@ -256,7 +260,7 @@ export const api = {
       return {};
     }
     if (!supabase) {
-      throw new Error('Article backend unavailable');
+      return {};
     }
     try {
       const { fetchPublishedArticleById } = await import('./supabase/published-articles');
@@ -264,6 +268,7 @@ export const api = {
       if (!data) return {};
       const row = data as SupabaseArticle;
       const base = mapArticle(row);
+      if (!base) return {};
       return {
         ...base,
         body_bn: row.content_bn || row.excerpt_bn || '',
@@ -275,10 +280,8 @@ export const api = {
         image_credit: row.image_credit || '',
         tags: [] as string[],
       };
-    } catch (e) {
-      throw new Error(
-        e instanceof Error ? e.message : 'Article backend unavailable',
-      );
+    } catch {
+      return {};
     }
   },
 

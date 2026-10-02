@@ -19,6 +19,7 @@ export const metadata: Metadata = {
     siteName: 'বাংলার ভয়েস',
     title: 'বাংলার ভয়েস — স্বাধীন সংবাদ প্রচারে নির্ভীক',
     description: 'বাংলাদেশ ও বিশ্ব — নিরপেক্ষ, দায়িত্বশীল ও নির্ভরযোগ্য সাংবাদিকতা',
+    url: canonicalSiteUrl(),
     locale: 'bn_BD',
     type: 'website',
   },

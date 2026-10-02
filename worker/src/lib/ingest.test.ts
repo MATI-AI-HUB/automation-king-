@@ -90,6 +90,21 @@ describe("publishViaSupabase", () => {
   });
 });
 
+describe("publishViaHttp image fallback", () => {
+  it("sends branded image when draft.imageUrl is empty", async () => {
+    const fetchMock = vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ok: true, id: "art-2", status: "published" }),
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    await publishViaHttp(cfg, draft({ imageUrl: "", imageAlt: "" }));
+    const body = JSON.parse(fetchMock.mock.calls[0][1].body as string);
+    expect(body.imageUrl).toBe("https://www.banglarvoice24news.com/banglar-voice-logo.png");
+    expect(body.imageCredit).toBe("বাংলার ভয়েস");
+    expect(body.status).toBe("published");
+  });
+});
+
 describe("sourceLabelFromUrl", () => {
   it("strips www and returns hostname", () => {
     expect(sourceLabelFromUrl("https://www.bbc.com/bengali/a")).toBe("bbc.com");
