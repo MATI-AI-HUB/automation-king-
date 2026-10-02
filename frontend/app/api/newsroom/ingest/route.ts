@@ -7,6 +7,7 @@ import {
   ingestKeyOk,
   sourceLabelFromUrl,
 } from '../../../../lib/ingest-auth';
+import { computeRiskLevel } from '../../../../lib/publish-gate';
 
 export const dynamic = 'force-dynamic';
 export const revalidate = 0;
@@ -234,7 +235,7 @@ export async function POST(req: Request) {
       image_is_representational: representational,
       is_fallback: imageSource === 'brand' || rewriteFallback,
       origin: 'aggregated',
-      risk_level: 'low',
+      risk_level: computeRiskLevel(title, content, category).level,
       media_type: imageUrl ? 'image' : 'none',
       ai_confidence: aiConfidence,
       ai_model: asText(body.rewriteMethod) === 'ai' ? 'chat' : '',

@@ -4,7 +4,7 @@ import type { WorkerConfig } from "../config.js";
 import type { DraftArticle } from "../agents/types.js";
 
 const cfg: WorkerConfig = {
-  intervalMinutes: 15,
+  intervalMinutes: 14,
   newsRssUrls: [],
   bvBaseUrl: "https://example.com",
   newsroomIngestKey: "k",

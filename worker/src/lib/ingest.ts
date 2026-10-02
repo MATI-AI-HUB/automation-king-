@@ -165,7 +165,8 @@ export async function publishViaSupabase(cfg: WorkerConfig, draft: DraftArticle)
       image_is_representational: representational,
       is_fallback: draft.imageSource === "brand" || rewriteIsFallback,
       origin: "aggregated",
-      risk_level: "low",
+      risk_level: draft.riskLevel || "low",
+      review_reason: draft.reviewReason || null,
       media_type: imageUrl ? "image" : "none",
       ai_confidence: Math.max(0, Math.min(1, draft.aiScore / 100)),
       ai_model: draft.rewriteMethod === "ai" ? "chat" : "",
@@ -181,6 +182,7 @@ export async function publishViaSupabase(cfg: WorkerConfig, draft: DraftArticle)
             },
           ]
         : [],
+      source_published_at: draft.raw.publishedAt || null,
       published_at: mapped.published_at,
       updated_at: now,
     })

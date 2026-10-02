@@ -1,24 +1,26 @@
 import type { WorkerConfig } from "../config.js";
-import { collect } from "./collector.js";
+import { collectDetailed } from "./collector.js";
 import { rewrite } from "./rewriter.js";
 import { isRepresentationalMedia, resolvePipelineMedia } from "./media.js";
 import { broadcast, edit } from "./chain-agents.js";
 import { verifyDraft } from "./specialists/router.js";
 import { checkDiversityQuota } from "./specialists/diversity.js";
 import { findCorroboratingSources } from "./specialists/multisource.js";
-import { decide } from "./supervisor.js";
+import { computeAiScore, decide } from "./supervisor.js";
 import type { DraftArticle, PipelineState } from "./types.js";
 import {
+  acquirePipelineLock,
   contentHash,
+  finishPipelineLock,
   isWithinLookback,
   logPipelineRun,
   MAX_PROCESS_PER_CYCLE,
   MAX_PUBLISH_PER_CYCLE,
-  MIN_AI_SCORE,
   rateLimitOk,
   sourceAlreadyPublished,
 } from "../lib/pipeline.js";
 import { publishViaHttp, publishViaSupabase, type PublishResult } from "../lib/ingest.js";
+import { computeRiskLevel } from "../lib/publish-gate.js";
 
 export type { PublishResult };
 
@@ -49,16 +51,26 @@ export async function runPipeline(cfg: WorkerConfig): Promise<{
   let failed = 0;
   let queued = 0;
   const errorTypes = new Set<string>();
-  let rawItems: Awaited<ReturnType<typeof collect>> = [];
+  let rawItems: Awaited<ReturnType<typeof collectDetailed>>["items"] = [];
+  let sourceOutcomes: Awaited<ReturnType<typeof collectDetailed>>["sources"] = {};
+  let disabledSources: string[] = [];
+  const lock = await acquirePipelineLock(cfg, "worker");
+  if (!lock.ok) {
+    return { collected: 0, published: 0, rejected: 0, skipped: 0, pending: 0 };
+  }
 
   try {
     await logPipelineRun(cfg, { stage: "collect", status: "started", details: { phase: "start" } });
-    rawItems = await collect(cfg);
+    const collected = await collectDetailed(cfg);
+    rawItems = collected.items;
+    sourceOutcomes = collected.sources;
+    disabledSources = collected.disabled;
     await logPipelineRun(cfg, {
       stage: "collect",
       status: "success",
       fetched: rawItems.length,
       duration_ms: Date.now() - started,
+      details: { sources: sourceOutcomes, disabled: disabledSources },
     });
 
     for (const raw of rawItems) {
@@ -130,6 +142,8 @@ export async function runPipeline(cfg: WorkerConfig): Promise<{
           skipReason: rewritten.reason ?? "ai_rewrite",
           aiScore: 0,
           aiSummary: rewritten.reason ?? "ai_rewrite",
+          riskLevel: computeRiskLevel(rewritten.titleBn, rewritten.contentBn, raw.sourceCategory).level,
+          reviewReason: rewritten.reason ?? "ai_rewrite",
           status: "pending_review",
           duplicateOf: null,
         };
@@ -166,7 +180,7 @@ export async function runPipeline(cfg: WorkerConfig): Promise<{
         rewriteMethod: rewritten.method,
         fallback: false,
         skipReason: null,
-        aiScore: 50,
+        aiScore: 0,
         aiSummary: "",
         status: "draft",
         duplicateOf: null,
@@ -207,7 +221,6 @@ export async function runPipeline(cfg: WorkerConfig): Promise<{
       try {
         const verdict = await verifyDraft(cfg, draft);
         draft.verification = verdict;
-        draft.aiScore = verdict.compositeScore;
         if (verdict.decision === "reject" && verdict.compositeScore < 40) {
           draft.status = "rejected";
           rejected += 1;
@@ -219,6 +232,9 @@ export async function runPipeline(cfg: WorkerConfig): Promise<{
         pending += 1;
         continue;
       }
+      draft.aiScore = computeAiScore(draft);
+      const risk = computeRiskLevel(draft.titleBn, draft.contentBn, draft.raw.sourceCategory);
+      draft.riskLevel = risk.level;
 
       (draft as { factSources?: unknown }).factSources = [
         { name: draft.raw.sourceCategory || "primary", url: draft.raw.link, type: "primary" },
@@ -242,22 +258,17 @@ export async function runPipeline(cfg: WorkerConfig): Promise<{
       }
       if (decision.action === "wait") {
         draft.status = "pending_review";
+        draft.reviewReason = decision.reason;
         pending += 1;
         queued += 1;
+        await publishArticle(cfg, draft);
         continue;
       }
 
-      const scoreOk = (draft.aiScore || 0) >= MIN_AI_SCORE;
-      const sourceOk = /^https?:\/\//i.test(raw.link);
-      const imageOk = Boolean(imageUrl);
-      const canPublish =
-        decision.action === "publish" &&
-        scoreOk &&
-        sourceOk &&
-        imageOk &&
-        draft.rewriteMethod === "ai" &&
-        !draft.fallback;
+      const canPublish = decision.action === "publish";
       draft.status = canPublish ? "published" : "pending_review";
+      draft.reviewReason = canPublish ? null : decision.reason;
+      draft.riskLevel = draft.riskLevel || computeRiskLevel(draft.titleBn, draft.contentBn, draft.raw.sourceCategory).level;
       if (!canPublish) queued += 1;
       const result = await publishArticle(cfg, draft);
       if (result.ok) {
@@ -294,8 +305,7 @@ export async function runPipeline(cfg: WorkerConfig): Promise<{
       }
     }
 
-    await logPipelineRun(cfg, {
-      stage: "cycle",
+    await finishPipelineLock(cfg, lock.runId, {
       status: failed > 0 ? "partial" : "success",
       fetched: rawItems.length,
       queued,
@@ -305,13 +315,17 @@ export async function runPipeline(cfg: WorkerConfig): Promise<{
       skipped,
       failed,
       duration_ms: Date.now() - started,
-      details: { error_types: [...errorTypes] },
+      details: {
+        error_types: [...errorTypes],
+        sources: sourceOutcomes,
+        disabled: disabledSources,
+        locked_by: "worker",
+      },
       error_message: errorTypes.size > 0 ? [...errorTypes].join(",") : undefined,
     });
   } catch (e) {
     const message = e instanceof Error ? e.message : String(e);
-    await logPipelineRun(cfg, {
-      stage: "cycle",
+    await finishPipelineLock(cfg, lock.runId, {
       status: "failed",
       fetched: rawItems.length,
       queued,
@@ -321,7 +335,12 @@ export async function runPipeline(cfg: WorkerConfig): Promise<{
       skipped,
       failed: failed + 1,
       duration_ms: Date.now() - started,
-      details: { error_types: [...errorTypes] },
+      details: {
+        error_types: [...errorTypes],
+        sources: sourceOutcomes,
+        disabled: disabledSources,
+        locked_by: "worker",
+      },
       error_message: message.slice(0, 2000),
     });
     throw e;
