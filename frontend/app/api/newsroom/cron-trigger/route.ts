@@ -350,6 +350,8 @@ function isHttpsImageUrl(value: string): boolean {
   }
 }
 
+const MIN_IMAGE_BYTES = 8 * 1024
+
 async function headOk(url: string, deadline: number): Promise<boolean> {
   try {
     validateHttpsUrl(url)
@@ -362,7 +364,11 @@ async function headOk(url: string, deadline: number): Promise<boolean> {
         cache: 'no-store',
       })
       const type = (response.headers.get('content-type') || '').toLowerCase()
-      return response.ok && (!type || type.startsWith('image/'))
+      const length = Number(response.headers.get('content-length') ?? 0)
+      if (!response.ok) return false
+      if (type && !type.startsWith('image/')) return false
+      if (length > 0 && length < MIN_IMAGE_BYTES) return false
+      return true
     } finally {
       timeout.dispose()
     }
@@ -371,9 +377,12 @@ async function headOk(url: string, deadline: number): Promise<boolean> {
   }
 }
 
-async function pexelsImage(query: string, deadline: number): Promise<string> {
+async function pexelsImage(
+  query: string,
+  deadline: number,
+): Promise<{ url: string; credit: string }> {
   const key = process.env.PEXELS_API_KEY
-  if (!key) return ''
+  if (!key) return { url: '', credit: '' }
   try {
     const timeout = createTimeout(deadline, 5_000)
     try {
@@ -385,16 +394,26 @@ async function pexelsImage(query: string, deadline: number): Promise<string> {
           cache: 'no-store',
         },
       )
-      if (!response.ok) return ''
+      if (!response.ok) return { url: '', credit: '' }
       const data = (await response.json()) as {
-        photos?: Array<{ src?: { large?: string } }>
+        photos?: Array<{
+          src?: { large?: string }
+          photographer?: string
+        }>
       }
-      return data.photos?.[0]?.src?.large || ''
+      const photo = data.photos?.[0]
+      const url = photo?.src?.large || ''
+      if (!url) return { url: '', credit: '' }
+      const photographer = (photo?.photographer || '').trim()
+      return {
+        url,
+        credit: photographer ? `Pexels — ${photographer}` : 'Pexels',
+      }
     } finally {
       timeout.dispose()
     }
   } catch {
-    return ''
+    return { url: '', credit: '' }
   }
 }
 
@@ -407,7 +426,7 @@ async function resolveArticleImage(
     return { url: item.imageUrl, credit: 'সূত্র' }
   }
   const pexels = await pexelsImage(titleBn || item.title, deadline)
-  if (pexels) return { url: pexels, credit: 'Pexels' }
+  if (pexels.url) return { url: pexels.url, credit: pexels.credit }
   return { url: FALLBACK_IMAGE, credit: 'বাংলার ভয়েস' }
 }
 
@@ -614,6 +633,7 @@ export async function POST(request: Request) {
     failed: 0,
   }
   const errorCodes = new Set<string>()
+  const skipReasons = new Set<string>()
   const candidates: Candidate[] = []
 
   const supabase = createClient(supabaseUrl, serviceRoleKey, {
@@ -669,7 +689,11 @@ export async function POST(request: Request) {
       stats.failed += candidates.length
     } else {
       const batch = candidates.slice(0, MAX_CANDIDATES)
-      stats.skipped += Math.max(0, candidates.length - batch.length)
+      const overflow = Math.max(0, candidates.length - batch.length)
+      if (overflow > 0) {
+        stats.skipped += overflow
+        skipReasons.add('batch_limit')
+      }
 
       await runPool(batch, MAX_CONCURRENCY, async ({ source, item }) => {
         if (Date.now() >= deadline - 500) {
@@ -709,6 +733,21 @@ export async function POST(request: Request) {
 
         if (duplicate) {
           stats.skipped += 1
+          skipReasons.add('duplicate_source')
+          await supabase.from('news_ingest_queue').upsert(
+            {
+              source_name: source.name,
+              source_url: link,
+              source_published_at: item.publishedAt,
+              title: item.title.slice(0, 500),
+              description: item.description.slice(0, 6000),
+              status: 'skipped',
+              last_error: 'duplicate_source',
+              processed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'source_url' },
+          )
           return
         }
 
@@ -748,37 +787,56 @@ export async function POST(request: Request) {
 
         if (hashed) {
           stats.skipped += 1
+          skipReasons.add('duplicate_hash')
+          await supabase.from('news_ingest_queue').upsert(
+            {
+              source_name: source.name,
+              source_url: link,
+              source_published_at: item.publishedAt,
+              title: item.title.slice(0, 500),
+              description: item.description.slice(0, 6000),
+              status: 'skipped',
+              last_error: 'duplicate_hash',
+              processed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'source_url' },
+          )
           return
         }
 
         const image = await resolveArticleImage(item, rewrite.title_bn, deadline)
         const publishedAt = new Date().toISOString()
 
-        const { error: insertError } = await supabase.from('articles').insert({
-          title_bn: rewrite.title_bn,
-          content_bn: rewrite.content_bn,
-          excerpt_bn: rewrite.excerpt_bn,
-          status: 'published',
-          editorial_status: 'auto_published',
-          verification_status: 'pending',
-          human_verified: false,
-          source_type: 'syndicated',
-          source_name: source.name,
-          source_url: link,
-          canonical_url: link,
-          content_hash: contentHash,
-          source_id: source.id,
-          origin: 'aggregated',
-          workflow_status: 'published',
-          category: 'national',
-          category_key: 'national',
-          thumbnail_url: image.url,
-          featured_image: image.url,
-          image_credit: image.credit,
-          media_type: 'image',
-          published_at: publishedAt,
-          source_published_at: item.publishedAt,
-        })
+        const { data: inserted, error: insertError } = await supabase
+          .from('articles')
+          .insert({
+            title_bn: rewrite.title_bn,
+            content_bn: rewrite.content_bn,
+            excerpt_bn: rewrite.excerpt_bn,
+            status: 'published',
+            editorial_status: 'auto_published',
+            verification_status: 'pending',
+            human_verified: false,
+            source_type: 'syndicated',
+            source_name: source.name,
+            source_url: link,
+            canonical_url: link,
+            content_hash: contentHash,
+            source_id: source.id,
+            origin: 'aggregated',
+            workflow_status: 'published',
+            category: 'national',
+            category_key: 'national',
+            thumbnail_url: image.url,
+            featured_image: image.url,
+            image_credit: image.credit,
+            media_type: image.url ? 'image' : 'none',
+            published_at: publishedAt,
+            source_published_at: item.publishedAt,
+          })
+          .select('id')
+          .single()
 
         if (insertError) {
           const message = (insertError.message || '').toLowerCase()
@@ -788,14 +846,44 @@ export async function POST(request: Request) {
             message.includes('23505')
           ) {
             stats.skipped += 1
+            skipReasons.add('unique_violation')
             return
           }
           stats.failed += 1
           errorCodes.add('article_insert')
+          await supabase.from('news_ingest_queue').upsert(
+            {
+              source_name: source.name,
+              source_url: link,
+              source_published_at: item.publishedAt,
+              title: item.title.slice(0, 500),
+              description: item.description.slice(0, 6000),
+              status: 'failed',
+              last_error: 'article_insert',
+              processed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'source_url' },
+          )
           return
         }
 
         stats.ingested += 1
+        await supabase.from('news_ingest_queue').upsert(
+          {
+            source_name: source.name,
+            source_url: link,
+            source_published_at: item.publishedAt,
+            title: item.title.slice(0, 500),
+            description: item.description.slice(0, 6000),
+            status: 'published',
+            article_id: inserted?.id ?? null,
+            last_error: null,
+            processed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          },
+          { onConflict: 'source_url' },
+        )
       })
     }
   }
@@ -814,6 +902,7 @@ export async function POST(request: Request) {
     articles_failed: stats.failed,
     ai_provider: aiConfig?.provider ?? null,
     error_codes: [...errorCodes],
+    skip_reasons: [...skipReasons],
   }
 
   const { data: run, error: runInsertError } = await supabase

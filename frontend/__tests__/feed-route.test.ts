@@ -54,11 +54,12 @@ describe('GET /api/public/feed.json', () => {
     const { GET } = await import('../app/api/public/feed.json/route');
     const res = await GET();
     expect(res.status).toBe(200);
-    expect(from).toHaveBeenCalledWith('articles');
+    expect(from).toHaveBeenCalledWith('public_articles_feed');
     const body = await res.json();
     expect(body.items[0].source_name).toBe('বিবিসি বাংলা');
     expect(body.items[0].image_credit).toBe('Wikimedia');
     expect(body.items[0].authors[0].name).toBe('বিবিসি বাংলা');
+    expect(body.items[0].banner_image).toBe('');
   });
 
   it('returns 503 when supabase is unconfigured', async () => {

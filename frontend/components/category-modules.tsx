@@ -74,7 +74,7 @@ export function CategoryModules({ articles, locale = 'bn' as Locale }: { article
               <span className="h-4 w-1 rounded-full bg-primary" aria-hidden />
               <h2
                 id={headingId}
-                className="font-serifbn text-2xl font-extrabold leading-none tracking-tight text-ink dark:text-paper"
+                className="font-serifbn text-2xl font-extrabold leading-snug text-ink dark:text-paper"
               >
                 {translateCategory(locale, category)}
               </h2>

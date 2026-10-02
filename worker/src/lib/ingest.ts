@@ -95,6 +95,10 @@ export async function publishViaSupabase(cfg: WorkerConfig, draft: DraftArticle)
   const mapped = mapStatus(draft.status);
   const category = mapCategory(draft.raw.sourceCategory);
   const now = new Date().toISOString();
+  const imageUrl =
+    (draft.imageUrl || "").trim() ||
+    "https://www.banglarvoice24news.com/banglar-voice-logo.png";
+  const imageCredit = (draft.imageAlt || "").trim() || "বাংলার ভয়েস";
 
   if (sourceUrl) {
     const { data: existing } = await client
@@ -148,11 +152,11 @@ export async function publishViaSupabase(cfg: WorkerConfig, draft: DraftArticle)
       source_url: sourceUrl || null,
       canonical_url: sourceUrl || null,
       content_hash: hash,
-      thumbnail_url: draft.imageUrl,
-      featured_image: draft.imageUrl,
-      image_alt_bn: draft.imageAlt.slice(0, 250),
-      image_credit: draft.imageAlt.slice(0, 250),
-      media_type: draft.imageUrl ? "image" : "none",
+      thumbnail_url: imageUrl,
+      featured_image: imageUrl,
+      image_alt_bn: imageCredit.slice(0, 250),
+      image_credit: imageCredit.slice(0, 250),
+      media_type: imageUrl ? "image" : "none",
       ai_confidence: Math.max(0, Math.min(1, draft.aiScore / 100)),
       ai_model: draft.rewriteMethod === "ai" ? "chat" : "",
       fact_sources: sourceUrl
@@ -219,9 +223,11 @@ export async function publishViaHttp(cfg: WorkerConfig, draft: DraftArticle): Pr
       content: draft.contentBn,
       excerpt: draft.excerptBn,
       tags: draft.tags,
-      imageUrl: draft.imageUrl,
+      imageUrl:
+        (draft.imageUrl || "").trim() ||
+        "https://www.banglarvoice24news.com/banglar-voice-logo.png",
       imageAlt: draft.imageAlt,
-      imageCredit: draft.imageAlt,
+      imageCredit: (draft.imageAlt || "").trim() || "বাংলার ভয়েস",
       imageLicense: draft.imageLicense,
       imageSource: draft.imageSource,
       rewriteMethod: draft.rewriteMethod,

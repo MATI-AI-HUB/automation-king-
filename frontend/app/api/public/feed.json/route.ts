@@ -17,7 +17,7 @@ const KEY_TO_LABEL: Record<string, string> = {
   tech: 'প্রযুক্তি',
   health: 'স্বাস্থ্য',
   education: 'শিক্ষা',
-  international: 'আন্তর্জাতিক',
+  international: 'বিশ্ব',
   city: 'নগর',
 };
 

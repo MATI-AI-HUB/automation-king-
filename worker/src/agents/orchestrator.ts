@@ -1,7 +1,7 @@
 import type { WorkerConfig } from "../config.js";
 import { collect } from "./collector.js";
 import { rewrite } from "./rewriter.js";
-import { fetchMedia, rssThumbnail } from "./media.js";
+import { brandedFallback, fetchMedia, rssThumbnail } from "./media.js";
 import { broadcast, edit } from "./chain-agents.js";
 import { verifyDraft } from "./specialists/router.js";
 import { checkDiversityQuota } from "./specialists/diversity.js";
@@ -119,8 +119,8 @@ export async function runPipeline(cfg: WorkerConfig): Promise<{
       const media = await fetchMedia(cfg, rewritten.titleBn);
       state.stage = "media";
       const rssMedia = rssThumbnail(raw.imageUrl);
-      const chosen = media ?? rssMedia;
-      const imageUrl = chosen?.url || "";
+      const chosen = media ?? rssMedia ?? brandedFallback();
+      const imageUrl = chosen.url;
 
       const draft: DraftArticle = {
         raw,
@@ -129,9 +129,9 @@ export async function runPipeline(cfg: WorkerConfig): Promise<{
         excerptBn: rewritten.contentBn.slice(0, 300),
         tags: [],
         imageUrl,
-        imageAlt: chosen?.attribution ?? "",
-        imageLicense: chosen?.license ?? "",
-        imageSource: chosen?.source ?? "",
+        imageAlt: chosen.attribution,
+        imageLicense: chosen.license,
+        imageSource: chosen.source,
         rewriteMethod: rewritten.method,
         fallback: false,
         skipReason: imageUrl ? null : "missing_image",

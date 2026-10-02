@@ -7,7 +7,7 @@ export interface MediaResult {
   height: number;
   attribution: string;
   license: string;
-  source: "wikimedia" | "openverse" | "pexels" | "rss";
+  source: "wikimedia" | "openverse" | "pexels" | "rss" | "brand";
 }
 
 const WIKIMEDIA_API =
@@ -127,6 +127,17 @@ export function rssThumbnail(url: string | undefined): MediaResult | null {
     attribution: "Source RSS enclosure",
     license: "source",
     source: "rss",
+  };
+}
+
+export function brandedFallback(): MediaResult {
+  return {
+    url: "https://www.banglarvoice24news.com/banglar-voice-logo.png",
+    width: 1200,
+    height: 675,
+    attribution: "বাংলার ভয়েস",
+    license: "brand",
+    source: "brand",
   };
 }
 
