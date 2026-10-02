@@ -3,11 +3,34 @@ import { createClient } from "@supabase/supabase-js";
 import { BUILTIN_SOURCES, type WorkerConfig } from "../config.js";
 import { FEED_ACCEPT, WORKER_UA, fetchWithRetry, sleep } from "../lib/http.js";
 import { assertSafeHttpUrl } from "../lib/ssrf.js";
+import { recentSourceOutcomes } from "../lib/pipeline.js";
+import {
+  FEED_403_DISABLE_THRESHOLD,
+  PIPELINE_INTERVAL_MINUTES,
+  isSourceDue,
+  lastFetchAt,
+  shouldDisableAfter403,
+  type SourceFetchOutcome,
+} from "../lib/publish-gate.js";
 import type { RawItem } from "./types.js";
 
-export const FEED_403_DISABLE_THRESHOLD = 3;
+export { FEED_403_DISABLE_THRESHOLD };
 
-const feed403Counts = new Map<string, number>();
+export type CollectedSource = {
+  id?: string;
+  name?: string;
+  url: string;
+  category: string;
+  enabled: boolean;
+  killSwitch: boolean;
+  intervalMinutes: number;
+};
+
+export type CollectResult = {
+  items: RawItem[];
+  sources: Record<string, SourceFetchOutcome>;
+  disabled: string[];
+};
 
 export function feedBrowserHeaders(): Record<string, string> {
   return {
@@ -21,25 +44,15 @@ export function feedBrowserHeaders(): Record<string, string> {
 export async function fetchFeedResponse(url: string): Promise<Response | null> {
   const init = { headers: feedBrowserHeaders() };
   let res = await fetchWithRetry(url, init, { retries: 2, timeoutMs: 8000 });
-  if (res?.status === 403) {
+  if (res?.status === 403 || res?.status === 429) {
     await sleep(400);
     res = await fetchWithRetry(url, init, { retries: 2, timeoutMs: 8000 });
   }
-  if (res?.status === 403) {
+  if (res?.status === 403 || res?.status === 429) {
     await sleep(1200);
     res = await fetchWithRetry(url, init, { retries: 1, timeoutMs: 8000 });
   }
   return res;
-}
-
-export function noteFeed403(url: string): number {
-  const n = (feed403Counts.get(url) ?? 0) + 1;
-  feed403Counts.set(url, n);
-  return n;
-}
-
-export function resetFeed403(url: string): void {
-  feed403Counts.delete(url);
 }
 
 async function disableNewsSource(cfg: WorkerConfig, feedUrl: string, reason: string): Promise<void> {
@@ -59,7 +72,11 @@ async function disableNewsSource(cfg: WorkerConfig, feedUrl: string, reason: str
     console.error("[collector] disable news_sources failed", { feedUrl, message: error.message });
     return;
   }
-  console.warn("[collector] disabled news_sources after repeated 403", { feedUrl, reason });
+  console.warn("[collector] disabled news_sources after repeated 403", {
+    feedUrl,
+    reason,
+    threshold: FEED_403_DISABLE_THRESHOLD,
+  });
 }
 
 const parser = new XMLParser({
@@ -138,39 +155,93 @@ export function extractItems(xml: string, sourceUrl: string, category: string): 
     .filter((x): x is RawItem => x !== null);
 }
 
-export async function collect(cfg: WorkerConfig): Promise<RawItem[]> {
-  const sources =
+async function loadDbSources(cfg: WorkerConfig): Promise<CollectedSource[] | null> {
+  if (!cfg.supabaseUrl || !cfg.supabaseServiceKey) return null;
+  const client = createClient(cfg.supabaseUrl, cfg.supabaseServiceKey, {
+    auth: { persistSession: false, autoRefreshToken: false },
+  });
+  const { data, error } = await client
+    .from("news_sources")
+    .select("id, name, feed_url, enabled, kill_switch, interval_minutes")
+    .eq("enabled", true)
+    .eq("kill_switch", false);
+  if (error || !data) return null;
+  return data.map((row) => ({
+    id: row.id as string,
+    name: row.name as string,
+    url: row.feed_url as string,
+    category: "national",
+    enabled: true,
+    killSwitch: false,
+    intervalMinutes: Number(row.interval_minutes) || PIPELINE_INTERVAL_MINUTES,
+  }));
+}
+
+function envSources(cfg: WorkerConfig): CollectedSource[] {
+  const list =
     cfg.newsRssUrls.length > 0
       ? cfg.newsRssUrls.map((url) => ({ category: "custom", url }))
       : BUILTIN_SOURCES;
+  return list.map((src) => ({
+    url: src.url,
+    category: src.category,
+    enabled: true,
+    killSwitch: false,
+    intervalMinutes: PIPELINE_INTERVAL_MINUTES,
+  }));
+}
 
+export async function collectDetailed(cfg: WorkerConfig): Promise<CollectResult> {
+  const dbSources = await loadDbSources(cfg);
+  const sources = dbSources && dbSources.length > 0 ? dbSources : envSources(cfg);
+  const previous = await recentSourceOutcomes(cfg);
   const results: RawItem[] = [];
+  const outcomes: Record<string, SourceFetchOutcome> = {};
+  const disabled: string[] = [];
+  const nowIso = new Date().toISOString();
+
   for (const src of sources) {
+    const key = src.id || src.url;
     try {
+      if (!isSourceDue(lastFetchAt(previous, key), src.intervalMinutes)) {
+        outcomes[key] = { status: "skipped_not_due", at: nowIso };
+        continue;
+      }
       assertSafeHttpUrl(src.url);
       const res = await fetchFeedResponse(src.url);
-      if (!res) continue;
+      if (!res) {
+        outcomes[key] = { status: "error", at: nowIso };
+        continue;
+      }
       if (res.status === 403) {
-        const n = noteFeed403(src.url);
-        console.error("[collector] feed_fetch_http_403", { url: src.url, consecutive: n });
-        if (n >= FEED_403_DISABLE_THRESHOLD) {
+        outcomes[key] = { status: "403", http_status: 403, at: nowIso };
+        console.error("[collector] feed_fetch_http_403", { url: src.url, source_id: src.id });
+        if (shouldDisableAfter403(previous, key)) {
           await disableNewsSource(cfg, src.url, "feed_fetch_http_403");
+          disabled.push(key);
         }
         continue;
       }
       if (!res.ok) {
+        outcomes[key] = { status: "error", http_status: res.status, at: nowIso };
         console.error("[collector] feed_fetch_http_" + res.status, { url: src.url });
         continue;
       }
-      resetFeed403(src.url);
+      outcomes[key] = { status: "ok", http_status: res.status, at: nowIso };
       const xml = await res.text();
       results.push(...extractItems(xml, src.url, src.category));
     } catch (e) {
+      outcomes[key] = { status: "error", at: nowIso };
       console.error("[collector] feed skipped", {
         url: src.url,
         error: e instanceof Error ? e.message : String(e),
       });
     }
   }
-  return results;
+  return { items: results, sources: outcomes, disabled };
+}
+
+export async function collect(cfg: WorkerConfig): Promise<RawItem[]> {
+  const result = await collectDetailed(cfg);
+  return result.items;
 }

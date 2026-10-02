@@ -1,7 +1,21 @@
 import { createHash, timingSafeEqual } from 'node:crypto'
 import { isIP } from 'node:net'
-import { createClient } from '@supabase/supabase-js'
+import { createClient, type SupabaseClient } from '@supabase/supabase-js'
 import { NextResponse } from 'next/server'
+import {
+  FEED_403_DISABLE_THRESHOLD,
+  PIPELINE_INTERVAL_MINUTES,
+  STALE_LOCK_MS,
+  computeScore,
+  decidePublish,
+  isAutoPublish,
+  isRecentEnough,
+  isSourceDue,
+  lastFetchAt,
+  minAiScore,
+  shouldDisableAfter403,
+  type SourceFetchOutcome,
+} from '@/lib/publish-gate'
 
 export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
@@ -14,9 +28,6 @@ const MAX_AI_RESPONSE_BYTES = 1024 * 1024
 const MAX_CONCURRENCY = 4
 const INTERNAL_DEADLINE_MS = 54_000
 const FALLBACK_IMAGE = 'https://www.banglarvoice24news.com/banglar-voice-logo.png'
-const FEED_403_DISABLE_THRESHOLD = 3
-const ITEM_MAX_AGE_MS = 48 * 60 * 60 * 1000
-const MIN_AI_CONFIDENCE = 0.4
 const FEED_UA =
   'Mozilla/5.0 (compatible; BanglarVoiceNewsBot/1.0; +https://banglarvoice24news.com/contact) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
 const FEED_ACCEPT =
@@ -26,7 +37,9 @@ type Source = {
   id: string
   name: string
   feed_url: string
-  consecutive_fetch_errors?: number | null
+  enabled?: boolean | null
+  kill_switch?: boolean | null
+  interval_minutes?: number | null
 }
 
 type FeedItem = {
@@ -330,11 +343,52 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms))
 }
 
-function isRecentEnough(iso: string | null, now = Date.now()): boolean {
-  if (!iso) return true
-  const t = Date.parse(iso)
-  if (Number.isNaN(t)) return true
-  return now - t <= ITEM_MAX_AGE_MS
+async function recentSourceRuns(supabase: SupabaseClient) {
+  const { data } = await supabase
+    .from('news_pipeline_runs')
+    .select('details, created_at')
+    .order('created_at', { ascending: false })
+    .limit(12)
+  return (data ?? []) as Array<{
+    details?: { sources?: Record<string, SourceFetchOutcome> } | null
+  }>
+}
+
+async function acquireCronLock(supabase: SupabaseClient) {
+  const staleBefore = new Date(Date.now() - STALE_LOCK_MS).toISOString()
+  const { data: running } = await supabase
+    .from('news_pipeline_runs')
+    .select('id, created_at, completed_at')
+    .eq('status', 'running')
+    .order('created_at', { ascending: false })
+    .limit(1)
+    .maybeSingle()
+
+  if (running && running.created_at && running.created_at > staleBefore && !running.completed_at) {
+    return { ok: false as const, runId: running.id as string, reason: 'lock_held' }
+  }
+  if (running?.id) {
+    await supabase
+      .from('news_pipeline_runs')
+      .update({
+        status: 'failed',
+        error_message: 'stale_lock',
+        completed_at: new Date().toISOString(),
+      })
+      .eq('id', running.id)
+      .eq('status', 'running')
+  }
+  const { data, error } = await supabase
+    .from('news_pipeline_runs')
+    .insert({
+      stage: 'cron',
+      status: 'running',
+      details: { locked_by: 'cron', sources: {} },
+    })
+    .select('id')
+    .single()
+  if (error || !data) return { ok: false as const, reason: error?.message || 'lock_insert_failed' }
+  return { ok: true as const, runId: data.id as string }
 }
 
 async function fetchFeedOnce(feedUrl: string, deadline: number) {
@@ -695,14 +749,32 @@ function classifyAiHttp(status: number): string {
   return `ai_rewrite_http_${status}`
 }
 
+function isRequestAuthorized(request: Request) {
+  const ingestKey = process.env.NEWSROOM_INGEST_KEY
+  const cronSecret = process.env.CRON_SECRET
+  const headerKey = request.headers.get('x-ingest-key')
+  const authorization = request.headers.get('authorization')
+  const bearer = authorization?.startsWith('Bearer ') ? authorization.slice(7) : null
+  return (
+    isAuthorized(headerKey, ingestKey) ||
+    isAuthorized(bearer, ingestKey) ||
+    isAuthorized(bearer, cronSecret)
+  )
+}
+
+export async function GET(request: Request) {
+  return POST(request)
+}
+
 export async function POST(request: Request) {
   const configuredIngestKey = process.env.NEWSROOM_INGEST_KEY
+  const cronSecret = process.env.CRON_SECRET
 
-  if (!configuredIngestKey) {
+  if (!configuredIngestKey && !cronSecret) {
     return jsonError('Server authentication is not configured', 500)
   }
 
-  if (!isAuthorized(request.headers.get('x-ingest-key'), configuredIngestKey)) {
+  if (!isRequestAuthorized(request)) {
     return jsonError('Unauthorized', 401)
   }
 
@@ -738,9 +810,23 @@ export async function POST(request: Request) {
     },
   })
 
+  const lock = await acquireCronLock(supabase)
+  if (!lock.ok) {
+    return NextResponse.json(
+      { ok: true, skipped: true, reason: lock.reason || 'lock_held' },
+      { status: 200 },
+    )
+  }
+
+  const sourceOutcomes: Record<string, SourceFetchOutcome> = {}
+  const disabledSources: string[] = []
+  const previousRuns = await recentSourceRuns(supabase)
+  const autoPublish = isAutoPublish()
+  const scoreFloor = minAiScore()
+
   const { data: sources, error: sourcesError } = await supabase
     .from('news_sources')
-    .select('id, name, feed_url')
+    .select('id, name, feed_url, enabled, kill_switch, interval_minutes')
     .eq('enabled', true)
     .eq('kill_switch', false)
 
@@ -748,11 +834,22 @@ export async function POST(request: Request) {
     stats.failed += 1
     errorCodes.add('source_query')
   } else {
-    await runPool((sources ?? []) as Source[], 4, async (source) => {
+    await runPool((sources ?? []) as Source[], MAX_CONCURRENCY, async (source) => {
+      const nowIso = new Date().toISOString()
       try {
+        if (
+          !isSourceDue(
+            lastFetchAt(previousRuns, source.id),
+            source.interval_minutes || PIPELINE_INTERVAL_MINUTES,
+          )
+        ) {
+          sourceOutcomes[source.id] = { status: 'skipped_not_due', at: nowIso }
+          return
+        }
         const items = await fetchFeed(source.feed_url, deadline)
         stats.sourcesProcessed += 1
         stats.fetched += items.length
+        sourceOutcomes[source.id] = { status: 'ok', http_status: 200, at: nowIso }
 
         for (const item of items) {
           candidates.push({ source, item })
@@ -766,15 +863,21 @@ export async function POST(request: Request) {
           code,
         })
         if (code === 'feed_fetch_http_403') {
-          await supabase
-            .from('news_sources')
-            .update({ enabled: false, updated_at: new Date().toISOString() })
-            .eq('id', source.id)
-          console.warn('[newsroom] disabled news_source after repeated 403', {
-            source_id: source.id,
-            threshold: FEED_403_DISABLE_THRESHOLD,
-          })
-          errorCodes.add('feed_fetch_http_403_disabled')
+          sourceOutcomes[source.id] = { status: '403', http_status: 403, at: nowIso }
+          if (shouldDisableAfter403(previousRuns, source.id)) {
+            await supabase
+              .from('news_sources')
+              .update({ enabled: false, updated_at: new Date().toISOString() })
+              .eq('id', source.id)
+            disabledSources.push(source.id)
+            console.warn('[newsroom] disabled news_source after repeated 403', {
+              source_id: source.id,
+              threshold: FEED_403_DISABLE_THRESHOLD,
+            })
+            errorCodes.add('feed_fetch_http_403_disabled')
+          }
+        } else {
+          sourceOutcomes[source.id] = { status: 'error', at: nowIso }
         }
       }
     })
@@ -851,7 +954,14 @@ export async function POST(request: Request) {
           return
         }
 
-        if (duplicate) {
+        const { data: canonicalDup } = await supabase
+          .from('articles')
+          .select('id')
+          .eq('canonical_url', link)
+          .limit(1)
+          .maybeSingle()
+
+        if (duplicate || canonicalDup) {
           stats.skipped += 1
           skipReasons.add('duplicate_source')
           await supabase.from('news_ingest_queue').upsert(
@@ -915,7 +1025,20 @@ export async function POST(request: Request) {
             image_is_representational: image.representational,
             is_fallback: true,
             media_type: image.url ? 'image' : 'none',
-            risk_level: 'low',
+            risk_level: decidePublish({
+              autoPublish,
+              sourceEnabled: source.enabled !== false,
+              killSwitch: source.kill_switch === true,
+              sourceUrl: link,
+              imageUrl: image.url,
+              isFallback: true,
+              rewriteMethod: 'fallback',
+              bodyBn: item.description || item.title,
+              titleBn: item.title,
+              sourceText: item.description,
+              sourcePublishedAt: item.publishedAt,
+              minAiScore: scoreFloor,
+            }).riskLevel,
             review_reason: code,
             source_published_at: item.publishedAt,
           })
@@ -977,11 +1100,31 @@ export async function POST(request: Request) {
 
         const image = await resolveArticleImage(item, rewrite.title_bn, deadline)
         const publishedAt = new Date().toISOString()
-        const autoPublish =
-          Boolean(image.url) &&
-          Boolean(link) &&
-          rewrite.content_bn.length >= 40 &&
-          MIN_AI_CONFIDENCE <= 1
+        const gate = decidePublish({
+          autoPublish,
+          sourceEnabled: source.enabled !== false,
+          killSwitch: source.kill_switch === true,
+          sourceUrl: link,
+          imageUrl: image.url,
+          isFallback: image.isFallback,
+          rewriteMethod: 'ai',
+          bodyBn: rewrite.content_bn,
+          titleBn: rewrite.title_bn,
+          sourceText: item.description,
+          sourcePublishedAt: item.publishedAt,
+          category: 'national',
+          minAiScore: scoreFloor,
+        })
+        const score = gate.score || computeScore({
+          titleBn: rewrite.title_bn,
+          bodyBn: rewrite.content_bn,
+          sourceUrl: link,
+          imageUrl: image.url,
+          isFallback: image.isFallback,
+          rewriteMethod: 'ai',
+          sourceText: item.description,
+        })
+        const publishNow = gate.action === 'publish'
 
         const { data: inserted, error: insertError } = await supabase
           .from('articles')
@@ -989,8 +1132,8 @@ export async function POST(request: Request) {
             title_bn: rewrite.title_bn,
             content_bn: rewrite.content_bn,
             excerpt_bn: rewrite.excerpt_bn,
-            status: autoPublish ? 'published' : 'pending',
-            editorial_status: autoPublish ? 'auto_published' : 'pending_review',
+            status: publishNow ? 'published' : 'pending',
+            editorial_status: publishNow ? 'auto_published' : 'pending_review',
             verification_status: 'pending',
             human_verified: false,
             source_type: 'syndicated',
@@ -1000,7 +1143,7 @@ export async function POST(request: Request) {
             content_hash: contentHash,
             source_id: source.id,
             origin: 'aggregated',
-            workflow_status: autoPublish ? 'published' : 'draft',
+            workflow_status: publishNow ? 'published' : 'draft',
             category: 'national',
             category_key: 'national',
             thumbnail_url: image.url,
@@ -1011,10 +1154,11 @@ export async function POST(request: Request) {
             image_is_representational: image.representational,
             is_fallback: image.isFallback,
             media_type: image.url ? 'image' : 'none',
-            risk_level: 'low',
-            ai_confidence: 0.7,
+            risk_level: gate.riskLevel,
+            review_reason: publishNow ? null : gate.reason,
+            ai_confidence: Math.max(0, Math.min(1, score / 100)),
             ai_model: aiConfig!.model,
-            published_at: autoPublish ? publishedAt : null,
+            published_at: publishNow ? publishedAt : null,
             source_published_at: item.publishedAt,
           })
           .select('id')
@@ -1050,7 +1194,7 @@ export async function POST(request: Request) {
           return
         }
 
-        if (autoPublish) {
+        if (publishNow) {
           stats.ingested += 1
         } else {
           stats.pending += 1
@@ -1063,9 +1207,9 @@ export async function POST(request: Request) {
             source_published_at: item.publishedAt,
             title: item.title.slice(0, 500),
             description: item.description.slice(0, 6000),
-            status: autoPublish ? 'published' : 'pending_review',
+            status: publishNow ? 'published' : 'pending_review',
             article_id: inserted?.id ?? null,
-            last_error: null,
+            last_error: publishNow ? null : gate.reason,
             processed_at: new Date().toISOString(),
             updated_at: new Date().toISOString(),
           },
@@ -1093,12 +1237,15 @@ export async function POST(request: Request) {
     error_codes: [...errorCodes],
     skip_reasons: [...skipReasons],
     error_types: [...errorCodes],
+    sources: sourceOutcomes,
+    disabled: disabledSources,
+    locked_by: 'cron',
   }
 
-  const { data: run, error: runInsertError } = await supabase
+  const durationMs = Date.now() - startedAt
+  const { error: runUpdateError } = await supabase
     .from('news_pipeline_runs')
-    .insert({
-      stage: 'cron',
+    .update({
       status,
       fetched: stats.fetched,
       queued: stats.queued,
@@ -1107,49 +1254,38 @@ export async function POST(request: Request) {
       pending_review: stats.pending,
       skipped: stats.skipped,
       failed: stats.failed,
-      duration_ms: Date.now() - startedAt,
+      duration_ms: durationMs,
       details,
       error_message: errorCodes.size > 0 ? [...errorCodes].join(',') : null,
       completed_at: new Date().toISOString(),
     })
-    .select('id')
-    .single()
+    .eq('id', lock.runId)
 
-  if (runInsertError) {
+  if (runUpdateError) {
     return NextResponse.json(
       {
         ok: false,
-        run_id: null,
+        run_id: lock.runId,
         sources_processed: stats.sourcesProcessed,
         articles_ingested: stats.ingested,
         articles_skipped: stats.skipped,
         articles_failed: stats.failed + 1,
-        duration_ms: Date.now() - startedAt,
+        duration_ms: durationMs,
         error: 'Run completed, but pipeline logging failed',
       },
       { status: 500 },
     )
   }
 
-  const durationMs = Date.now() - startedAt
-
-  await supabase
-    .from('news_pipeline_runs')
-    .update({
-      duration_ms: durationMs,
-      completed_at: new Date().toISOString(),
-    })
-    .eq('id', run.id)
-
   return NextResponse.json(
     {
       ok: status !== 'failed',
-      run_id: run.id,
+      run_id: lock.runId,
       sources_processed: stats.sourcesProcessed,
       articles_ingested: stats.ingested,
       articles_skipped: stats.skipped,
       articles_failed: stats.failed,
-      duration_ms: Date.now() - startedAt,
+      duration_ms: durationMs,
     },
     { status: status === 'failed' ? 500 : 200 },
   )
