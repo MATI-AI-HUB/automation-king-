@@ -2,8 +2,9 @@ import { NextResponse } from 'next/server';
 
 export const dynamic = 'force-dynamic';
 import { fetchPublishedArticlesFeed } from '../../../../lib/supabase/published-articles';
+import { canonicalSiteUrl } from '../../../../lib/site';
 
-const SITE = process.env.NEXT_PUBLIC_SITE_URL || 'https://banglarvoice24news.com';
+const SITE = canonicalSiteUrl();
 
 export const revalidate = 60;
 

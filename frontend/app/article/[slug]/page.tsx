@@ -11,10 +11,11 @@ import { TrustSignals } from '../../../components/trust-signals';
 import { Breadcrumb } from '../../../components/breadcrumb';
 import { RelatedArticles } from '../../../components/related-articles';
 import { ShareButtons } from '../../../components/share-buttons';
+import { canonicalSiteUrl } from '../../../lib/site';
 
 export const revalidate = 60;
 
-const BASE = process.env.NEXT_PUBLIC_SITE_URL || 'https://banglarvoice24news.com';
+const BASE = canonicalSiteUrl();
 
 type PageProps = { params: Promise<{ slug: string }> };
 
@@ -146,6 +147,7 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
       title: displayTitle,
       description: displayDek,
       type: 'article',
+      url: `${BASE}/article/${slug}`,
       locale: locale === 'en' ? 'en_US' : 'bn_BD',
       publishedTime: a.published_at,
       authors: a.author_name ? [a.author_name] : undefined,

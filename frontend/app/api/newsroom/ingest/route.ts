@@ -149,7 +149,7 @@ export async function POST(req: Request) {
   const contentHash = asText(body.contentHash);
   const excerpt = asText(body.excerpt) || content.slice(0, 160);
   const category = mapCategory(asText(body.sourceCategory));
-  const mapped = mapStatus(asText(body.status));
+  const mapped = mapStatus(asText(body.status) || 'published');
   const imageUrl = asText(body.imageUrl);
   const imageCredit = asText(body.imageCredit) || asText(body.imageAlt);
   const imageLicense = asText(body.imageLicense);

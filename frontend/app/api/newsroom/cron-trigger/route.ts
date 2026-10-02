@@ -7,11 +7,13 @@ export const runtime = 'nodejs'
 export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
-const MAX_ITEMS_PER_SOURCE = 10
+const MAX_ITEMS_PER_SOURCE = 4
+const MAX_CANDIDATES = 8
 const MAX_FEED_BYTES = 2 * 1024 * 1024
 const MAX_AI_RESPONSE_BYTES = 1024 * 1024
 const MAX_CONCURRENCY = 4
 const INTERNAL_DEADLINE_MS = 54_000
+const FALLBACK_IMAGE = 'https://www.banglarvoice24news.com/banglar-voice-logo.png'
 
 type Source = {
   id: string
@@ -24,6 +26,7 @@ type FeedItem = {
   link: string
   description: string
   publishedAt: string | null
+  imageUrl: string
 }
 
 type Candidate = {
@@ -114,6 +117,22 @@ function extractTag(block: string, tag: string) {
   return expression.exec(block)?.[1] ?? ''
 }
 
+function extractImage(block: string): string {
+  const enclosure = /<(?:[\w.-]+:)?enclosure\b([^>]*)\/?>/i.exec(block)?.[1] ?? ''
+  const enclosureUrl = /\burl\s*=\s*(["'])(.*?)\1/i.exec(enclosure)?.[2]
+  const enclosureType = /\btype\s*=\s*(["'])(.*?)\1/i.exec(enclosure)?.[2] || ''
+  if (enclosureUrl && (!enclosureType || enclosureType.toLowerCase().startsWith('image/'))) {
+    return plainText(enclosureUrl)
+  }
+
+  const media = /<(?:[\w.-]+:)?(?:content|thumbnail)\b([^>]*)\/?>/i.exec(block)?.[1] ?? ''
+  const mediaUrl = /\burl\s*=\s*(["'])(.*?)\1/i.exec(media)?.[2]
+  if (mediaUrl) return plainText(mediaUrl)
+
+  const img = /<img\b[^>]*src\s*=\s*(["'])(https?:\/\/.*?)\1/i.exec(block)?.[2]
+  return img ? plainText(img) : ''
+}
+
 function extractAtomLink(block: string) {
   const linkTags = [...block.matchAll(/<(?:[\w.-]+:)?link\b([^>]*)\/?>/gi)]
 
@@ -161,6 +180,7 @@ function parseFeed(xml: string): FeedItem[] {
             plainText(extractTag(block, 'published')) ||
             plainText(extractTag(block, 'updated')),
         ),
+        imageUrl: extractImage(block),
       }
     })
   }
@@ -186,6 +206,7 @@ function parseFeed(xml: string): FeedItem[] {
         plainText(extractTag(block, 'published')) ||
           plainText(extractTag(block, 'updated')),
       ),
+      imageUrl: extractImage(block),
     }
   })
 }
@@ -320,6 +341,76 @@ async function fetchFeed(feedUrl: string, deadline: number) {
   return parseFeed(text).slice(0, MAX_ITEMS_PER_SOURCE)
 }
 
+function isHttpsImageUrl(value: string): boolean {
+  try {
+    const url = validateHttpsUrl(value)
+    return /\.(jpe?g|png|webp|gif|avif)(\?|$)/i.test(url.pathname) || url.hostname.includes('pexels')
+  } catch {
+    return false
+  }
+}
+
+async function headOk(url: string, deadline: number): Promise<boolean> {
+  try {
+    validateHttpsUrl(url)
+    const timeout = createTimeout(deadline, 4_000)
+    try {
+      const response = await fetch(url, {
+        method: 'HEAD',
+        signal: timeout.signal,
+        redirect: 'follow',
+        cache: 'no-store',
+      })
+      const type = (response.headers.get('content-type') || '').toLowerCase()
+      return response.ok && (!type || type.startsWith('image/'))
+    } finally {
+      timeout.dispose()
+    }
+  } catch {
+    return false
+  }
+}
+
+async function pexelsImage(query: string, deadline: number): Promise<string> {
+  const key = process.env.PEXELS_API_KEY
+  if (!key) return ''
+  try {
+    const timeout = createTimeout(deadline, 5_000)
+    try {
+      const response = await fetch(
+        `https://api.pexels.com/v1/search?query=${encodeURIComponent(query.slice(0, 60) || 'Bangladesh')}&per_page=1`,
+        {
+          headers: { Authorization: key, Accept: 'application/json' },
+          signal: timeout.signal,
+          cache: 'no-store',
+        },
+      )
+      if (!response.ok) return ''
+      const data = (await response.json()) as {
+        photos?: Array<{ src?: { large?: string } }>
+      }
+      return data.photos?.[0]?.src?.large || ''
+    } finally {
+      timeout.dispose()
+    }
+  } catch {
+    return ''
+  }
+}
+
+async function resolveArticleImage(
+  item: FeedItem,
+  titleBn: string,
+  deadline: number,
+): Promise<{ url: string; credit: string }> {
+  if (item.imageUrl && isHttpsImageUrl(item.imageUrl) && (await headOk(item.imageUrl, deadline))) {
+    return { url: item.imageUrl, credit: 'সূত্র' }
+  }
+  const pexels = await pexelsImage(titleBn || item.title, deadline)
+  if (pexels) return { url: pexels, credit: 'Pexels' }
+  return { url: FALLBACK_IMAGE, credit: 'বাংলার ভয়েস' }
+}
+
 function getAIConfig(): AIConfig | null {
   const chatKey = process.env.CHAT_AI_KEY
   const chatBaseUrl = process.env.CHAT_AI_BASE_URL
@@ -348,7 +439,7 @@ function getAIConfig(): AIConfig | null {
     return {
       apiKey: process.env.GROQ_API_KEY,
       baseUrl: 'https://api.groq.com/openai/v1',
-      model: process.env.GROQ_MODEL || 'openai/gpt-oss-120b',
+      model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
       provider: 'groq',
     }
   }
@@ -577,7 +668,10 @@ export async function POST(request: Request) {
       errorCodes.add('ai_config')
       stats.failed += candidates.length
     } else {
-      await runPool(candidates, MAX_CONCURRENCY, async ({ source, item }) => {
+      const batch = candidates.slice(0, MAX_CANDIDATES)
+      stats.skipped += Math.max(0, candidates.length - batch.length)
+
+      await runPool(batch, MAX_CONCURRENCY, async ({ source, item }) => {
         if (Date.now() >= deadline - 500) {
           stats.failed += 1
           errorCodes.add('deadline')
@@ -636,15 +730,36 @@ export async function POST(request: Request) {
         stats.processed += 1
 
         const contentHash = createHash('sha256')
-          .update(rewrite.content_bn, 'utf8')
+          .update(`${link}|${rewrite.title_bn}|${rewrite.content_bn}`, 'utf8')
           .digest('hex')
+
+        const { data: hashed, error: hashError } = await supabase
+          .from('articles')
+          .select('id')
+          .eq('content_hash', contentHash)
+          .limit(1)
+          .maybeSingle()
+
+        if (hashError) {
+          stats.failed += 1
+          errorCodes.add('hash_check')
+          return
+        }
+
+        if (hashed) {
+          stats.skipped += 1
+          return
+        }
+
+        const image = await resolveArticleImage(item, rewrite.title_bn, deadline)
+        const publishedAt = new Date().toISOString()
 
         const { error: insertError } = await supabase.from('articles').insert({
           title_bn: rewrite.title_bn,
           content_bn: rewrite.content_bn,
           excerpt_bn: rewrite.excerpt_bn,
-          status: 'pending',
-          editorial_status: 'pending_review',
+          status: 'published',
+          editorial_status: 'auto_published',
           verification_status: 'pending',
           human_verified: false,
           source_type: 'syndicated',
@@ -654,14 +769,27 @@ export async function POST(request: Request) {
           content_hash: contentHash,
           source_id: source.id,
           origin: 'aggregated',
-          workflow_status: 'draft',
+          workflow_status: 'published',
           category: 'national',
           category_key: 'national',
-          published_at: null,
+          thumbnail_url: image.url,
+          featured_image: image.url,
+          image_credit: image.credit,
+          media_type: 'image',
+          published_at: publishedAt,
           source_published_at: item.publishedAt,
         })
 
         if (insertError) {
+          const message = (insertError.message || '').toLowerCase()
+          if (
+            message.includes('duplicate key') ||
+            message.includes('unique constraint') ||
+            message.includes('23505')
+          ) {
+            stats.skipped += 1
+            return
+          }
           stats.failed += 1
           errorCodes.add('article_insert')
           return
@@ -695,7 +823,8 @@ export async function POST(request: Request) {
       status,
       fetched: stats.fetched,
       processed: stats.processed,
-      pending_review: stats.ingested,
+      published: stats.ingested,
+      pending_review: 0,
       skipped: stats.skipped,
       failed: stats.failed,
       duration_ms: Date.now() - startedAt,

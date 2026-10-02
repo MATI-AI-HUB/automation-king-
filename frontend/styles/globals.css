@@ -23,13 +23,13 @@ body {
 }
 
 /* Seamless breaking-news ticker (see BreakingMarquee).
-   The text is repeated 3x, so translating -33.3333% loops seamlessly. */
+   The text is duplicated once; translating -50% loops without a visible gap. */
 @keyframes marquee {
   from {
     transform: translateX(0);
   }
   to {
-    transform: translateX(-33.3333%);
+    transform: translateX(-50%);
   }
 }
 

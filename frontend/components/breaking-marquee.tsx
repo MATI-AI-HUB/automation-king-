@@ -103,14 +103,14 @@ export function BreakingMarquee({ locale = 'bn' as Locale }: { locale?: Locale }
         {/* Only this inner text div animates; the track never moves */}
         <div className="absolute inset-0 flex items-center">
           <div className="marquee-track flex items-center whitespace-nowrap will-change-transform animate-[marquee_30s_linear_infinite]">
-            {[0, 1, 2].map((copy) => (
+            {[0, 1].map((copy) => (
               <span
                 key={copy}
                 className="flex items-center whitespace-nowrap text-sm font-medium text-white"
                 aria-hidden
               >
-                {texts.map((text) => (
-                  <span key={text} className="flex items-center">
+                {texts.map((text, i) => (
+                  <span key={`${copy}-${i}`} className="flex items-center">
                     {text}
                     <span className="mx-8 h-1 w-1 shrink-0 rounded-full bg-white/60" />
                   </span>
