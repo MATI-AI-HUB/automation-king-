@@ -99,20 +99,22 @@ async function safeFetch<T>(url: string, timeoutMs = 4000, empty: T): Promise<T>
 
 type SupabaseArticle = {
   id: string;
-  title_bn: string;
-  title_en: string | null;
-  content_bn: string;
-  content_en: string | null;
-  category: string | null;
-  thumbnail_url: string | null;
+  title_bn?: string | null;
+  title_en?: string | null;
+  content_bn?: string | null;
+  content_en?: string | null;
+  category?: string | null;
+  category_key?: string | null;
+  thumbnail_url?: string | null;
   featured_image?: string | null;
   excerpt_bn?: string | null;
-  status: string;
-  published_at: string | null;
-  created_at: string;
-  source_url: string | null;
-  source_name: string | null;
-  image_credit: string | null;
+  status?: string | null;
+  published_at?: string | null;
+  created_at?: string | null;
+  source_url?: string | null;
+  source_name?: string | null;
+  image_credit?: string | null;
+  canonical_url?: string | null;
   origin?: string | null;
 };
 
@@ -130,27 +132,28 @@ function estimateReadTime(content: string): number {
 }
 
 function mapArticle(row: SupabaseArticle): FeedArticle {
-  const summary = stripHtml(row.excerpt_bn || row.content_bn).slice(0, 220);
-  const pubIso = row.published_at || row.created_at;
-  const readMin = estimateReadTime(row.content_bn);
+  const body = row.content_bn || row.excerpt_bn || '';
+  const summary = stripHtml(row.excerpt_bn || body).slice(0, 220);
+  const pubIso = row.published_at || row.created_at || undefined;
+  const readMin = estimateReadTime(body);
+  const title = (row.title_bn || '').trim() || 'শিরোনাম পাওয়া যায়নি';
   return {
     id: row.id,
     slug: row.id,
-    title_bn: row.title_bn,
+    title_bn: title,
     title_en: row.title_en || undefined,
     dek_bn: summary,
     dek_en: row.content_en ? stripHtml(row.content_en).slice(0, 220) : undefined,
-    category: categoryLabel(row.category),
+    category: categoryLabel(row.category || row.category_key),
     featured_image: row.thumbnail_url || row.featured_image || '',
     reading_time_min: readMin,
     bias_index: 50,
     published_at: pubIso,
-    // Bengali display strings (bonus fields — used by components if present)
     published_at_bn: bengaliDate(pubIso),
     time_ago_bn: timeAgoBn(pubIso),
     reading_time_bn: `${toBn(readMin)} মিনিট পড়া`,
     source_name: row.source_name || '',
-    source_url: row.source_url || '',
+    source_url: row.source_url || row.canonical_url || '',
     image_credit: row.image_credit || '',
     origin: row.origin === 'original' ? 'original' : 'aggregated',
   };
@@ -214,10 +217,17 @@ export const api = {
   base: PB_BASE,
 
   async articles(limit = 20): Promise<ArticleResponse> {
-    const siteOrigin = (
-      process.env.NEXT_PUBLIC_SITE_URL ||
-      'https://banglarvoice24news.com'
-    ).replace(/\/+$/, '');
+    try {
+      const { fetchPublishedArticlesFeed } = await import('./supabase/published-articles');
+      const rows = await fetchPublishedArticlesFeed();
+      const items = (rows as SupabaseArticle[]).map(mapArticle).slice(0, limit);
+      if (items.length) return { items };
+    } catch {
+      /* public JSON feed fallback */
+    }
+
+    const { canonicalSiteUrl } = await import('./site');
+    const siteOrigin = canonicalSiteUrl();
 
     const response = await fetch(`${siteOrigin}/api/public/feed.json`, {
       next: { revalidate: 60 },
@@ -256,12 +266,11 @@ export const api = {
       const base = mapArticle(row);
       return {
         ...base,
-        ...(row as Record<string, unknown>),
-        body_bn: row.content_bn,
+        body_bn: row.content_bn || row.excerpt_bn || '',
         body_en: row.content_en || undefined,
         featured_image: row.thumbnail_url || row.featured_image || '',
         author_name: row.source_name || '',
-        source_url: row.source_url || '',
+        source_url: row.source_url || row.canonical_url || '',
         source_name: row.source_name || '',
         image_credit: row.image_credit || '',
         tags: [] as string[],

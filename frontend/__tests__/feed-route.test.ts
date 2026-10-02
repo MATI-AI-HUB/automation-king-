@@ -31,8 +31,18 @@ describe('GET /api/public/feed.json', () => {
       ],
       error: null,
     };
-    select.mockResolvedValue(payload);
-    from.mockReturnValue({ select });
+    const chain = {
+      select: vi.fn(),
+      eq: vi.fn(),
+      order: vi.fn(),
+      limit: vi.fn(),
+    };
+    chain.select.mockReturnValue(chain);
+    chain.eq.mockReturnValue(chain);
+    chain.order.mockReturnValue(chain);
+    chain.limit.mockResolvedValue(payload);
+    from.mockReturnValue(chain);
+    select.mockImplementation(chain.select);
   });
 
   afterEach(() => {
@@ -44,8 +54,7 @@ describe('GET /api/public/feed.json', () => {
     const { GET } = await import('../app/api/public/feed.json/route');
     const res = await GET();
     expect(res.status).toBe(200);
-    expect(from).toHaveBeenCalledWith('public_articles_feed');
-    expect(select).toHaveBeenCalledWith('*');
+    expect(from).toHaveBeenCalledWith('articles');
     const body = await res.json();
     expect(body.items[0].source_name).toBe('বিবিসি বাংলা');
     expect(body.items[0].image_credit).toBe('Wikimedia');
