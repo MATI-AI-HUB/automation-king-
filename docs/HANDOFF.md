@@ -1,82 +1,55 @@
-# HANDOFF — public_article_views যাচাই (প্রোডে apply হয়নি)
+# HANDOFF — অটো-পাবলিশ পাইপলাইন (T0–T3)
 
 তারিখ: 2026-10-02
 ব্রাঞ্চ: `wip/t0-t3-fixes`
-ফাইল: `supabase/migrations/20261002000000_public_article_views.sql`
-নিয়ম: এই মাইগ্রেশন প্রোডাকশন DB-তে প্রয়োগ করা হয়নি। `.env` / `DATABASE_URL` / secret ছাপা বা কমিট হয়নি।
+নিয়ম: `.env` / `DATABASE_URL` / secret কমিট বা প্রিন্ট হয়নি। প্রোড DB-তে কমান্ড চালানো হয়নি। নতুন টেস্ট যোগ হয়নি।
 
-## ১. মাইগ্রেশন থেকে টেবিল কলাম (সব আছে)
+পূর্ববর্তী যাচাই: `supabase/migrations/20261002000000_public_article_views.sql` প্রোডে apply হয়নি।
 
-পুরোনো মাইগ্রেশন পড়া হয়েছে। নতুন timestamp মাইগ্রেশন লাগেনি। পুরোনো ফাইল বদলানো হয়নি।
+## এই সেশনে কী হলো
 
-### `public.articles`
+লক্ষ্য: প্রতি ~১৫ মিনিটে নতুন, ছবিসহ, সম্পূর্ণ খবর স্বয়ংক্রিয় published। পুরোনো ৬০৬ pending একসঙ্গে পাবলিশ হয় না।
 
-| কলাম | তৈরি হয় |
-|---|---|
-| id, title_bn, title_en, content_bn, content_en, thumbnail_url, category, status, published_at, created_at | `20260901000000_init_schema.sql` |
-| excerpt_bn, category_key, featured_image, source_name, source_url, image_credit, canonical_url | `20260925_newsroom_automation.sql` |
-| origin | `20260929_platform_contract.sql` |
+### ১. `feed_fetch_http_403`
 
-অনুপস্থিত: **নেই**
+- ব্রাউজার-সদৃশ `User-Agent` + `Accept` + `Accept-Language` (`worker/src/lib/http.ts`, collector, cron-trigger)।
+- প্রতি ফিডে retry + backoff (403/429-এ অতিরিক্ত দুই রাউন্ড)।
+- একটি ফিড ফেইল করলে লুপ চলতে থাকে।
+- বারবার 403: worker-এ ৩ সাইকেল পর `news_sources.enabled=false`; cron-এ রিট্রাই শেষেই disable।
+- তালিকা: `news_sources` যেখানে `enabled=false` (SQL Editor-এ ইউজার দেখবেন)।
 
-### `public.news_pipeline_runs`
+### ২. `ai_rewrite`
 
-`20260925_newsroom_automation.sql`: `completed_at`, `created_at`, `status`, `published` — সব আছে।
+- কারণ লগ: missing env / invalid key / rate limit / model_not_found / empty / http।
+- রিরাইট ব্যর্থ হলে আর্টিকেল `pending` — extractive কপি published হয় না (`fallback_not_publishable` যদি status=published)।
 
-অনুপস্থিত: **নেই**
+### ৩. ছবি
 
-## ২. নতুন কলাম মাইগ্রেশন
+ক্রম: সোর্স RSS ছবি → Pexels (`PEXELS_API_KEY`) → branded fallback।
+প্রতি ইনসার্টে: `featured_image`, `thumbnail_url`, `image_alt_bn`, `image_credit`, `image_license`।
+Pexels/brand: `image_is_representational=true`; brand: `is_fallback=true`।
+UI: হোম কার্ড + `/article/[slug]` এ «প্রতীকী ছবি»।
+`next.config.js` remotePatterns: pexels, wikimedia, openverse, সাইট লোগো, ওয়াইল্ডকার্ড।
 
-প্রস্তাব নেই। রিপো স্কিমায় ভিউ যে কলাম সিলেক্ট করে, সেগুলো আগের মাইগ্রেশনেই আছে।
+### ৪. অটো-পাবলিশ গেট
 
-## ৩. প্রোড SQL Editor তালিকা
+প্রকাশ শুধু যখন: AI rewrite সফল, `source_url` আছে, `content_hash` ডুপ্লিকেট নয়, ছবি আছে (fallback সহ), `ai_score`/`ai_confidence` থ্রেশহোল্ড, `risk_level=low`।
+নইলে `pending`। আইটেম ৪৮ ঘণ্টার বেশি পুরোনো হলে skip। পুরোনো pending বাল্ক-পাবলিশ নেই।
 
-ইউজার পেস্ট করেননি (প্লেসহোল্ডার: `[এখানে SQL Editor-এর রেজাল্ট পেস্ট করুন]`)।
-মাইগ্রেশন-vs-প্রোড অমিল দেখানো যায়নি। প্রোডে কোনো কমান্ড চালানো হয়নি।
+### ৫. ফ্রন্টএন্ড রিড
 
-প্রোডে চালানোর SQL (ইউজার নিজে SQL Editor-এ):
+পাবলিক ফিড/ডিটেইল শুধু `public_articles_feed` / `public_article_detail` (আর `articles` টেবিল নয়)।
+`/article/[slug]` UUID `id` দিয়ে মেলে (`slug = id`)।
+`og:image` + absolute canonical। `public_articles_feed`-এ `title_en` নেই।
 
-```sql
-select column_name
-from information_schema.columns
-where table_schema = 'public' and table_name = 'articles'
-order by ordinal_position;
+### ৬. `news_pipeline_runs`
 
-select column_name
-from information_schema.columns
-where table_schema = 'public' and table_name = 'news_pipeline_runs'
-order by ordinal_position;
-```
-
-## ৪. ভিউ
-
-ফাইল ঠিক করা হয়নি — কলাম মিসিং নেই। `public_articles_feed`-এ `title_en` নেই (নিয়ম অনুযায়ী)।
-
-- `public_articles_feed`: id, title_bn, excerpt_bn, content_bn, category, category_key, thumbnail_url, featured_image, status, published_at, source_name, source_url, image_credit, canonical_url, origin
-- `public_article_detail`: উপরের সব + title_en, content_en, created_at
-- `news_pipeline_last_success()`: `completed_at`/`created_at`, `status` in ('success','partial'), `published`
-
-## ৫. frontend / worker grep
-
-মিলছে।
-
-| ব্যবহার | সোর্স | সিলেক্ট |
-|---|---|---|
-| `frontend/lib/supabase/published-articles.ts` `PUBLISHED_ARTICLE_COLUMNS` | `public_articles_feed` | ভিউয়ের সাথে হুবহু; `title_en` নেই |
-| `PUBLIC_ARTICLE_DETAIL_COLUMNS` | `public_article_detail` | ভিউয়ের সাথে হুবহু |
-| `frontend/__tests__/feed-route.test.ts` | `public_articles_feed` | মিল |
-| `frontend/app/api/health/route.ts` | `news_pipeline_last_success` + `news_pipeline_runs` | completed_at, created_at, status, published (+ stage, error_message — টেবিলে আছে, ভিউ নয়) |
-| `worker/src/lib/ingest.ts` | `articles` (service_role insert/select) | ভিউ ব্যবহার করে না; টেবিল কলাম মাইগ্রেশনে আছে |
-
-হোমপেজ EN `title_en` ফিড ভিউতে নেই → `title_bn` ফলব্যাক। ডিটেইল ভিউতে `title_en` আছে।
-
-## এই সেশনে কোড ডিফ
-
-নেই (শুধু এই HANDOFF)।
+প্রতি সাইকেলে `fetched` / `queued` / `processed` / `published` + `details.error_types` / `error_message`।
 
 ## বাকি কাজ
 
-1. ইউজার প্রোড SQL Editor রেজাল্ট পেস্ট করুন — তারপর মাইগ্রেশন-vs-প্রোড অমিল ধরা যাবে।
-2. মিললেও `20261002000000_public_article_views.sql` প্রোডে apply করবেন না যতক্ষণ না আলাদা কনফার্ম।
-3. প্রোডে `articles` কলাম কম থাকলে আলাদা নতুন-timestamp মাইগ্রেশন; পুরোনো ফাইল না বদলানো।
-4. ভিউ apply-এর পর anon দিয়ে `/api/public/feed.json` ও article ডিটেইল যাচাই।
+1. প্রোডে ভিউ SQL apply করবেন না যতক্ষণ না আলাদা কনফার্ম (আগের HANDOFF)।
+2. `PEXELS_API_KEY`, chat/Groq/OpenRouter কি, `AUTO_PUBLISH=true` ওয়ার্কার/ক্রনে সেট আছে কি না ইউজার যাচাই করবেন (মান এখানে নেই)।
+3. SQL Editor কলাম লিস্ট এখনো পেস্ট হয়নি — প্রোড vs মাইগ্রেশন অমিল অপেক্ষমাণ।
+4. ৪০৩-এ disable হওয়া সোর্স পরে ম্যানুয়ালি `enabled=true` করতে হতে পারে।
+5. ভিউ apply-এর পর anon দিয়ে `/api/public/feed.json` ও article পেজ যাচাই।

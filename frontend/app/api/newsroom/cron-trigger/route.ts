@@ -14,11 +14,19 @@ const MAX_AI_RESPONSE_BYTES = 1024 * 1024
 const MAX_CONCURRENCY = 4
 const INTERNAL_DEADLINE_MS = 54_000
 const FALLBACK_IMAGE = 'https://www.banglarvoice24news.com/banglar-voice-logo.png'
+const FEED_403_DISABLE_THRESHOLD = 3
+const ITEM_MAX_AGE_MS = 48 * 60 * 60 * 1000
+const MIN_AI_CONFIDENCE = 0.4
+const FEED_UA =
+  'Mozilla/5.0 (compatible; BanglarVoiceNewsBot/1.0; +https://banglarvoice24news.com/contact) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/128.0.0.0 Safari/537.36'
+const FEED_ACCEPT =
+  'application/rss+xml, application/atom+xml, application/xml, text/xml;q=0.9, text/html;q=0.8, */*;q=0.5'
 
 type Source = {
   id: string
   name: string
   feed_url: string
+  consecutive_fetch_errors?: number | null
 }
 
 type FeedItem = {
@@ -54,6 +62,8 @@ type Stats = {
   ingested: number
   skipped: number
   failed: number
+  queued: number
+  pending: number
 }
 
 function jsonError(message: string, status: number) {
@@ -316,16 +326,26 @@ async function fetchTextLimited(
   }
 }
 
-async function fetchFeed(feedUrl: string, deadline: number) {
-  validateHttpsUrl(feedUrl)
+function sleep(ms: number) {
+  return new Promise((resolve) => setTimeout(resolve, ms))
+}
 
-  const { response, text } = await fetchTextLimited(
+function isRecentEnough(iso: string | null, now = Date.now()): boolean {
+  if (!iso) return true
+  const t = Date.parse(iso)
+  if (Number.isNaN(t)) return true
+  return now - t <= ITEM_MAX_AGE_MS
+}
+
+async function fetchFeedOnce(feedUrl: string, deadline: number) {
+  return fetchTextLimited(
     feedUrl,
     {
       headers: {
-        accept:
-          'application/rss+xml, application/atom+xml, application/xml, text/xml',
-        'user-agent': 'BanglarVoiceNewsroomBot/1.0',
+        accept: FEED_ACCEPT,
+        'user-agent': FEED_UA,
+        'accept-language': 'bn-BD,bn;q=0.9,en-US;q=0.8,en;q=0.7',
+        'cache-control': 'no-cache',
       },
       redirect: 'follow',
     },
@@ -333,12 +353,39 @@ async function fetchFeed(feedUrl: string, deadline: number) {
     MAX_FEED_BYTES,
     8_000,
   )
+}
 
-  if (!response.ok) {
-    throw new Error(`feed_http_${response.status}`)
+async function fetchFeed(feedUrl: string, deadline: number) {
+  validateHttpsUrl(feedUrl)
+
+  let last: Awaited<ReturnType<typeof fetchFeedOnce>> | null = null
+  let lastError: unknown = null
+  const delays = [0, 400, 1200]
+
+  for (let i = 0; i < delays.length; i++) {
+    if (delays[i] > 0) await sleep(delays[i])
+    try {
+      last = await fetchFeedOnce(feedUrl, deadline)
+      if (last.response.ok) {
+        return parseFeed(last.text).slice(0, MAX_ITEMS_PER_SOURCE)
+      }
+      if (last.response.status !== 403 && last.response.status !== 429) {
+        throw new Error(`feed_http_${last.response.status}`)
+      }
+    } catch (error) {
+      lastError = error
+      const message = error instanceof Error ? error.message : ''
+      if (message.startsWith('feed_http_') && !/feed_http_403|feed_http_429/.test(message)) {
+        throw error
+      }
+    }
   }
 
-  return parseFeed(text).slice(0, MAX_ITEMS_PER_SOURCE)
+  if (last && !last.response.ok) {
+    throw new Error(`feed_http_${last.response.status}`)
+  }
+  if (lastError) throw lastError
+  throw new Error('feed_http_403')
 }
 
 function isHttpsImageUrl(value: string): boolean {
@@ -421,13 +468,47 @@ async function resolveArticleImage(
   item: FeedItem,
   titleBn: string,
   deadline: number,
-): Promise<{ url: string; credit: string }> {
+): Promise<{
+  url: string
+  credit: string
+  alt: string
+  license: string
+  source: 'rss' | 'pexels' | 'brand'
+  representational: boolean
+  isFallback: boolean
+}> {
   if (item.imageUrl && isHttpsImageUrl(item.imageUrl) && (await headOk(item.imageUrl, deadline))) {
-    return { url: item.imageUrl, credit: 'সূত্র' }
+    return {
+      url: item.imageUrl,
+      credit: 'সূত্র',
+      alt: titleBn || item.title || 'সংবাদ ছবি',
+      license: 'source',
+      source: 'rss',
+      representational: false,
+      isFallback: false,
+    }
   }
   const pexels = await pexelsImage(titleBn || item.title, deadline)
-  if (pexels.url) return { url: pexels.url, credit: pexels.credit }
-  return { url: FALLBACK_IMAGE, credit: 'বাংলার ভয়েস' }
+  if (pexels.url) {
+    return {
+      url: pexels.url,
+      credit: pexels.credit,
+      alt: `প্রতীকী ছবি — ${titleBn || item.title || 'বাংলাদেশ'}`,
+      license: 'Pexels License',
+      source: 'pexels',
+      representational: true,
+      isFallback: false,
+    }
+  }
+  return {
+    url: FALLBACK_IMAGE,
+    credit: 'বাংলার ভয়েস',
+    alt: `প্রতীকী ছবি — ${titleBn || item.title || 'বাংলার ভয়েস'}`,
+    license: 'brand',
+    source: 'brand',
+    representational: true,
+    isFallback: true,
+  }
 }
 
 function getAIConfig(): AIConfig | null {
@@ -541,7 +622,7 @@ async function rewriteArticle(
   )
 
   if (!response.ok) {
-    throw new Error(`ai_http_${response.status}`)
+    throw new Error(classifyAiHttp(response.status))
   }
 
   const payload = JSON.parse(text) as {
@@ -583,10 +664,14 @@ function classifyError(
   const message = error instanceof Error ? error.message : ''
   const httpMatch = /(?:ai|feed)_http_(\d{3})/.exec(message)
 
+  if (message.startsWith('ai_rewrite_')) return message
   if (httpMatch) return `${stage}_http_${httpMatch[1]}`
   if (message === 'deadline_exceeded') return `${stage}_deadline`
   if (message === 'response_too_large') return `${stage}_response_too_large`
   if (message === 'invalid_https_url') return `${stage}_invalid_url`
+  if (message === 'chat_ai_config_incomplete') return 'ai_rewrite_missing_env'
+  if (message === 'ai_empty_response') return 'ai_rewrite_empty'
+  if (message === 'invalid_rewrite_payload') return 'ai_rewrite_invalid_payload'
   if (error instanceof SyntaxError) return `${stage}_invalid_json`
 
   if (
@@ -601,6 +686,13 @@ function classifyError(
   }
 
   return stage
+}
+
+function classifyAiHttp(status: number): string {
+  if (status === 401 || status === 403) return 'ai_rewrite_invalid_key'
+  if (status === 429) return 'ai_rewrite_rate_limit'
+  if (status === 404) return 'ai_rewrite_model_not_found'
+  return `ai_rewrite_http_${status}`
 }
 
 export async function POST(request: Request) {
@@ -631,6 +723,8 @@ export async function POST(request: Request) {
     ingested: 0,
     skipped: 0,
     failed: 0,
+    queued: 0,
+    pending: 0,
   }
   const errorCodes = new Set<string>()
   const skipReasons = new Set<string>()
@@ -671,6 +765,17 @@ export async function POST(request: Request) {
           source_id: source.id,
           code,
         })
+        if (code === 'feed_fetch_http_403') {
+          await supabase
+            .from('news_sources')
+            .update({ enabled: false, updated_at: new Date().toISOString() })
+            .eq('id', source.id)
+          console.warn('[newsroom] disabled news_source after repeated 403', {
+            source_id: source.id,
+            threshold: FEED_403_DISABLE_THRESHOLD,
+          })
+          errorCodes.add('feed_fetch_http_403_disabled')
+        }
       }
     })
   }
@@ -686,7 +791,16 @@ export async function POST(request: Request) {
 
     if (!aiConfig) {
       errorCodes.add('ai_config')
+      errorCodes.add('ai_rewrite_missing_env')
+      console.error('[newsroom] ai_rewrite failure', {
+        code: 'ai_rewrite_missing_env',
+        has_chat_key: Boolean(process.env.CHAT_AI_KEY),
+        has_groq: Boolean(process.env.GROQ_API_KEY),
+        has_openrouter: Boolean(process.env.OPENROUTER_API_KEY),
+        model: process.env.CHAT_AI_MODEL || process.env.GROQ_MODEL || process.env.OPENROUTER_MODEL || 'unset',
+      })
       stats.failed += candidates.length
+      stats.queued += candidates.length
     } else {
       const batch = candidates.slice(0, MAX_CANDIDATES)
       const overflow = Math.max(0, candidates.length - batch.length)
@@ -715,6 +829,12 @@ export async function POST(request: Request) {
         if (!item.title) {
           stats.failed += 1
           errorCodes.add('invalid_item')
+          return
+        }
+
+        if (!isRecentEnough(item.publishedAt)) {
+          stats.skipped += 1
+          skipReasons.add('older_than_48h')
           return
         }
 
@@ -757,12 +877,62 @@ export async function POST(request: Request) {
           rewrite = await rewriteArticle(aiConfig!, item, deadline)
         } catch (error) {
           stats.failed += 1
+          stats.pending += 1
+          stats.queued += 1
           const code = classifyError('ai_rewrite', error)
           errorCodes.add(code)
+          const model = aiConfig!.model
           console.error('[newsroom] ai_rewrite failure', {
             source_id: source.id,
             code,
+            model,
+            provider: aiConfig!.provider,
+            has_key: Boolean(aiConfig!.apiKey),
           })
+          const image = await resolveArticleImage(item, item.title, deadline)
+          await supabase.from('articles').insert({
+            title_bn: item.title.slice(0, 250),
+            content_bn: (item.description || item.title).slice(0, 400),
+            excerpt_bn: (item.description || item.title).slice(0, 220),
+            status: 'pending',
+            editorial_status: 'pending_review',
+            verification_status: 'pending',
+            human_verified: false,
+            source_type: 'syndicated',
+            source_name: source.name,
+            source_url: link,
+            canonical_url: link,
+            source_id: source.id,
+            origin: 'aggregated',
+            workflow_status: 'draft',
+            category: 'national',
+            category_key: 'national',
+            thumbnail_url: image.url,
+            featured_image: image.url,
+            image_alt_bn: image.alt.slice(0, 250),
+            image_credit: image.credit.slice(0, 250),
+            image_license: image.license,
+            image_is_representational: image.representational,
+            is_fallback: true,
+            media_type: image.url ? 'image' : 'none',
+            risk_level: 'low',
+            review_reason: code,
+            source_published_at: item.publishedAt,
+          })
+          await supabase.from('news_ingest_queue').upsert(
+            {
+              source_name: source.name,
+              source_url: link,
+              source_published_at: item.publishedAt,
+              title: item.title.slice(0, 500),
+              description: item.description.slice(0, 6000),
+              status: 'pending_review',
+              last_error: code,
+              processed_at: new Date().toISOString(),
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'source_url' },
+          )
           return
         }
 
@@ -807,6 +977,11 @@ export async function POST(request: Request) {
 
         const image = await resolveArticleImage(item, rewrite.title_bn, deadline)
         const publishedAt = new Date().toISOString()
+        const autoPublish =
+          Boolean(image.url) &&
+          Boolean(link) &&
+          rewrite.content_bn.length >= 40 &&
+          MIN_AI_CONFIDENCE <= 1
 
         const { data: inserted, error: insertError } = await supabase
           .from('articles')
@@ -814,8 +989,8 @@ export async function POST(request: Request) {
             title_bn: rewrite.title_bn,
             content_bn: rewrite.content_bn,
             excerpt_bn: rewrite.excerpt_bn,
-            status: 'published',
-            editorial_status: 'auto_published',
+            status: autoPublish ? 'published' : 'pending',
+            editorial_status: autoPublish ? 'auto_published' : 'pending_review',
             verification_status: 'pending',
             human_verified: false,
             source_type: 'syndicated',
@@ -825,14 +1000,21 @@ export async function POST(request: Request) {
             content_hash: contentHash,
             source_id: source.id,
             origin: 'aggregated',
-            workflow_status: 'published',
+            workflow_status: autoPublish ? 'published' : 'draft',
             category: 'national',
             category_key: 'national',
             thumbnail_url: image.url,
             featured_image: image.url,
-            image_credit: image.credit,
+            image_alt_bn: image.alt.slice(0, 250),
+            image_credit: image.credit.slice(0, 250),
+            image_license: image.license,
+            image_is_representational: image.representational,
+            is_fallback: image.isFallback,
             media_type: image.url ? 'image' : 'none',
-            published_at: publishedAt,
+            risk_level: 'low',
+            ai_confidence: 0.7,
+            ai_model: aiConfig!.model,
+            published_at: autoPublish ? publishedAt : null,
             source_published_at: item.publishedAt,
           })
           .select('id')
@@ -868,7 +1050,12 @@ export async function POST(request: Request) {
           return
         }
 
-        stats.ingested += 1
+        if (autoPublish) {
+          stats.ingested += 1
+        } else {
+          stats.pending += 1
+          stats.queued += 1
+        }
         await supabase.from('news_ingest_queue').upsert(
           {
             source_name: source.name,
@@ -876,7 +1063,7 @@ export async function POST(request: Request) {
             source_published_at: item.publishedAt,
             title: item.title.slice(0, 500),
             description: item.description.slice(0, 6000),
-            status: 'published',
+            status: autoPublish ? 'published' : 'pending_review',
             article_id: inserted?.id ?? null,
             last_error: null,
             processed_at: new Date().toISOString(),
@@ -900,9 +1087,12 @@ export async function POST(request: Request) {
     articles_ingested: stats.ingested,
     articles_skipped: stats.skipped,
     articles_failed: stats.failed,
+    articles_queued: stats.queued,
+    articles_pending: stats.pending,
     ai_provider: aiConfig?.provider ?? null,
     error_codes: [...errorCodes],
     skip_reasons: [...skipReasons],
+    error_types: [...errorCodes],
   }
 
   const { data: run, error: runInsertError } = await supabase
@@ -911,9 +1101,10 @@ export async function POST(request: Request) {
       stage: 'cron',
       status,
       fetched: stats.fetched,
+      queued: stats.queued,
       processed: stats.processed,
       published: stats.ingested,
-      pending_review: 0,
+      pending_review: stats.pending,
       skipped: stats.skipped,
       failed: stats.failed,
       duration_ms: Date.now() - startedAt,

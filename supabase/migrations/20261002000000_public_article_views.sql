@@ -18,6 +18,9 @@ select
   source_name,
   source_url,
   image_credit,
+  image_alt_bn,
+  image_is_representational,
+  is_fallback,
   canonical_url,
   origin
 from public.articles
@@ -41,6 +44,9 @@ select
   source_name,
   source_url,
   image_credit,
+  image_alt_bn,
+  image_is_representational,
+  is_fallback,
   canonical_url,
   origin
 from public.articles

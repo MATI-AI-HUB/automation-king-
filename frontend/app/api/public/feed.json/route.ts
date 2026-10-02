@@ -70,6 +70,7 @@ export async function GET() {
           source_name: sourceName,
           source_url: a.source_url || a.canonical_url || '',
           image_credit: a.image_credit || '',
+          image_is_representational: Boolean(a.image_is_representational || a.is_fallback),
           origin: a.origin === 'original' ? 'original' : 'aggregated',
           external_url: a.source_url || a.canonical_url || '',
         };

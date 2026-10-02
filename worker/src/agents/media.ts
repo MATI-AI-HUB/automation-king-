@@ -145,3 +145,23 @@ export async function fetchMedia(cfg: WorkerConfig, query: string): Promise<Medi
   const q = searchQuery(query);
   return (await fromWikimedia(q)) ?? (await fromOpenverse(q)) ?? (await fromPexels(cfg, q));
 }
+
+export async function resolvePipelineMedia(
+  cfg: WorkerConfig,
+  query: string,
+  sourceImageUrl?: string,
+): Promise<MediaResult> {
+  const fromSource = rssThumbnail(sourceImageUrl);
+  if (fromSource) return fromSource;
+  const pexels = await fromPexels(cfg, searchQuery(query));
+  if (pexels) return pexels;
+  return brandedFallback();
+}
+
+export function isRepresentationalMedia(media: MediaResult): boolean {
+  return media.source === "pexels" || media.source === "brand";
+}
+
+export function isFallbackMedia(media: MediaResult): boolean {
+  return media.source === "brand";
+}

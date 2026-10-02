@@ -86,14 +86,19 @@ export function sourceLabelFromUrl(url: string): string {
 export async function publishViaSupabase(cfg: WorkerConfig, draft: DraftArticle): Promise<PublishResult | null> {
   const client = supabaseAdmin(cfg);
   if (!client) return null;
-  if (draft.fallback || draft.rewriteMethod === "fallback") {
+  const rewriteIsFallback = draft.fallback || draft.rewriteMethod === "fallback";
+  if (rewriteIsFallback && draft.status === "published") {
     return { ok: false, error: "fallback_not_publishable" };
   }
 
   const hash = contentHash(draft.raw.link, draft.titleBn, draft.contentBn);
   const sourceUrl = draft.raw.link.trim();
-  const mapped = mapStatus(draft.status);
+  const mapped = rewriteIsFallback ? mapStatus("pending") : mapStatus(draft.status);
   const category = mapCategory(draft.raw.sourceCategory);
+  const representational =
+    draft.imageSource === "pexels" ||
+    draft.imageSource === "brand" ||
+    Boolean((draft as { imageRepresentational?: boolean }).imageRepresentational);
   const now = new Date().toISOString();
   const imageUrl =
     (draft.imageUrl || "").trim() ||
@@ -156,6 +161,11 @@ export async function publishViaSupabase(cfg: WorkerConfig, draft: DraftArticle)
       featured_image: imageUrl,
       image_alt_bn: imageCredit.slice(0, 250),
       image_credit: imageCredit.slice(0, 250),
+      image_license: (draft.imageLicense || "").slice(0, 120),
+      image_is_representational: representational,
+      is_fallback: draft.imageSource === "brand" || rewriteIsFallback,
+      origin: "aggregated",
+      risk_level: "low",
       media_type: imageUrl ? "image" : "none",
       ai_confidence: Math.max(0, Math.min(1, draft.aiScore / 100)),
       ai_model: draft.rewriteMethod === "ai" ? "chat" : "",
@@ -210,6 +220,9 @@ export async function publishViaHttp(cfg: WorkerConfig, draft: DraftArticle): Pr
   if (!cfg.bvBaseUrl || !cfg.newsroomIngestKey) {
     return { ok: false, error: "ingest_disabled" };
   }
+  if ((draft.fallback || draft.rewriteMethod === "fallback") && draft.status === "published") {
+    return { ok: false, error: "fallback_not_publishable" };
+  }
   const hash = contentHash(draft.raw.link, draft.titleBn, draft.contentBn);
   const res = await fetch(`${cfg.bvBaseUrl}/api/newsroom/ingest`, {
     method: "POST",
@@ -230,6 +243,10 @@ export async function publishViaHttp(cfg: WorkerConfig, draft: DraftArticle): Pr
       imageCredit: (draft.imageAlt || "").trim() || "বাংলার ভয়েস",
       imageLicense: draft.imageLicense,
       imageSource: draft.imageSource,
+      imageRepresentational:
+        draft.imageSource === "pexels" ||
+        draft.imageSource === "brand" ||
+        Boolean((draft as { imageRepresentational?: boolean }).imageRepresentational),
       rewriteMethod: draft.rewriteMethod,
       fallback: draft.fallback,
       aiScore: draft.aiScore,
