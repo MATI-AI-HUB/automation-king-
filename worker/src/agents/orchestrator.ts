@@ -59,6 +59,9 @@ export async function runPipeline(cfg: WorkerConfig): Promise<{
     return { collected: 0, published: 0, rejected: 0, skipped: 0, pending: 0 };
   }
 
+  let runStatus: "success" | "partial" | "failed" = "failed";
+  let runError: unknown = null;
+
   try {
     await logPipelineRun(cfg, { stage: "collect", status: "started", details: { phase: "start" } });
     const collected = await collectDetailed(cfg);
@@ -305,35 +308,26 @@ export async function runPipeline(cfg: WorkerConfig): Promise<{
       }
     }
 
-    await finishPipelineLock(cfg, lock.runId, {
-      status: failed > 0 ? "partial" : "success",
-      fetched: rawItems.length,
-      queued,
-      processed,
-      published,
-      pending_review: pending,
-      skipped,
-      failed,
-      duration_ms: Date.now() - started,
-      details: {
-        error_types: [...errorTypes],
-        sources: sourceOutcomes,
-        disabled: disabledSources,
-        locked_by: "worker",
-      },
-      error_message: errorTypes.size > 0 ? [...errorTypes].join(",") : undefined,
-    });
+    runStatus = failed > 0 ? "partial" : "success";
   } catch (e) {
-    const message = e instanceof Error ? e.message : String(e);
+    runError = e;
+    runStatus = "failed";
+  } finally {
+    const errorMessage =
+      runStatus === "failed"
+        ? (runError instanceof Error ? runError.message : String(runError)).slice(0, 2000)
+        : errorTypes.size > 0
+          ? [...errorTypes].join(",")
+          : undefined;
     await finishPipelineLock(cfg, lock.runId, {
-      status: "failed",
+      status: runStatus,
       fetched: rawItems.length,
       queued,
       processed,
       published,
       pending_review: pending,
       skipped,
-      failed: failed + 1,
+      failed: runStatus === "failed" ? failed + 1 : failed,
       duration_ms: Date.now() - started,
       details: {
         error_types: [...errorTypes],
@@ -341,10 +335,11 @@ export async function runPipeline(cfg: WorkerConfig): Promise<{
         disabled: disabledSources,
         locked_by: "worker",
       },
-      error_message: message.slice(0, 2000),
+      error_message: errorMessage,
     });
-    throw e;
   }
+
+  if (runError) throw runError;
 
   return { collected: rawItems.length, published, rejected, skipped, pending };
 }

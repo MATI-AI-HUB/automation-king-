@@ -132,7 +132,7 @@ export async function acquirePipelineLock(
     .from("news_pipeline_runs")
     .select("id, created_at, completed_at")
     .eq("status", "running")
-    .order("created_at", { ascending: false })
+    .order("created_at", { ascending: true })
     .limit(1)
     .maybeSingle();
   if (running && running.created_at && running.created_at > staleBefore && !running.completed_at) {

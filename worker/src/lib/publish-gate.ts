@@ -9,6 +9,7 @@ export const STALE_LOCK_MS = 10 * 60 * 1000
 export const MIN_BODY_CHARS = 200
 export const DEFAULT_MIN_AI_SCORE = 40
 export const COPY_SIMILARITY_MAX = 0.85
+export const SOURCE_DUE_GRACE_MINUTES = 2
 
 export type RiskLevel = 'low' | 'medium' | 'high'
 export type PublishAction = 'publish' | 'hold' | 'reject'
@@ -127,7 +128,8 @@ export function isSourceDue(
   const t = Date.parse(lastFetchedAt)
   if (Number.isNaN(t)) return true
   const minutes = intervalMinutes > 0 ? intervalMinutes : PIPELINE_INTERVAL_MINUTES
-  return now - t >= minutes * 60 * 1000
+  const effectiveMinutes = Math.max(1, minutes - SOURCE_DUE_GRACE_MINUTES)
+  return now - t >= effectiveMinutes * 60 * 1000
 }
 
 export function lastFetchAt(
