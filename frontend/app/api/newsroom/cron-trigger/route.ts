@@ -816,7 +816,7 @@ function getAIConfigs(): AIConfig[] {
     configs.push({
       apiKey: process.env.GROQ_API_KEY,
       baseUrl: 'https://api.groq.com/openai/v1',
-      model: process.env.GROQ_MODEL || 'llama-3.1-8b-instant',
+      model: process.env.GROQ_MODEL || 'openai/gpt-oss-20b',
       provider: 'groq',
     })
   }
