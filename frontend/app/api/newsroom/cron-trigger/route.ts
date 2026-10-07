@@ -31,6 +31,8 @@ const MAX_AI_RESPONSE_BYTES = 1024 * 1024
 const MAX_ARTICLE_BYTES = 512 * 1024
 const MAX_CONCURRENCY = 4
 const INTERNAL_DEADLINE_MS = 54_000
+const AI_FETCH_TIMEOUT_MS = 15_000
+const AI_TRANSIENT_RETRY_DELAYS_MS = [400, 800]
 const ARTICLE_FETCH_TIMEOUT_MS = 10_000
 const FULL_TEXT_MIN_CHARS = 400
 const robotsCache = new Map<string, boolean>()
@@ -942,7 +944,7 @@ async function rewriteArticleOnce(
       },
       deadline,
       MAX_AI_RESPONSE_BYTES,
-      15_000,
+      AI_FETCH_TIMEOUT_MS,
     )
 
     httpStatus = response.status
@@ -974,19 +976,75 @@ async function rewriteArticleOnce(
   }
 }
 
+function remainingUntilDeadline(deadline: number): number {
+  return deadline - Date.now()
+}
+
+function canAttemptAiCall(deadline: number, extraMs = 0): boolean {
+  return remainingUntilDeadline(deadline) > extraMs + AI_FETCH_TIMEOUT_MS
+}
+
+function isTransientAiError(error: unknown): boolean {
+  const code = classifyError('ai_rewrite', error)
+  if (code === 'ai_rewrite_timeout') return true
+  const match = /^ai_rewrite_http_(\d{3})$/.exec(code)
+  return Boolean(match && Number(match[1]) >= 500)
+}
+
+async function rewriteArticleWithTransientRetries(
+  config: AIConfig,
+  item: FeedItem,
+  deadline: number,
+  jsonMode: boolean,
+): Promise<RewriteResult> {
+  let lastError: unknown = new Error('deadline_exceeded')
+
+  for (let attempt = 0; attempt <= AI_TRANSIENT_RETRY_DELAYS_MS.length; attempt += 1) {
+    const delay = attempt === 0 ? 0 : AI_TRANSIENT_RETRY_DELAYS_MS[attempt - 1]
+    if (!canAttemptAiCall(deadline, delay)) {
+      console.warn('[newsroom] ai_rewrite skip retry', {
+        provider: config.provider,
+        model: config.model,
+        attempt,
+        remaining_ms: remainingUntilDeadline(deadline),
+        need_ms: delay + AI_FETCH_TIMEOUT_MS,
+        code: classifyError('ai_rewrite', lastError),
+      })
+      throw lastError
+    }
+
+    if (delay > 0) await sleep(delay)
+
+    try {
+      return await rewriteArticleOnce(config, item, deadline, jsonMode)
+    } catch (error) {
+      lastError = error
+      if (!isTransientAiError(error)) throw error
+      console.warn('[newsroom] ai_rewrite transient failure', {
+        provider: config.provider,
+        model: config.model,
+        attempt,
+        code: classifyError('ai_rewrite', error),
+        remaining_ms: remainingUntilDeadline(deadline),
+      })
+    }
+  }
+
+  throw lastError
+}
+
 async function rewriteArticle(
   config: AIConfig,
   item: FeedItem,
   deadline: number,
 ): Promise<RewriteResult> {
   try {
-    return await rewriteArticleOnce(config, item, deadline, true)
+    return await rewriteArticleWithTransientRetries(config, item, deadline, true)
   } catch (error) {
-    // Some providers/models reject `response_format`; retry once without it
-    // rather than failing the whole article.
     const message = error instanceof Error ? error.message : ''
     if (message === 'ai_rewrite_http_400' || message === 'ai_rewrite_http_422') {
-      return rewriteArticleOnce(config, item, deadline, false)
+      if (!canAttemptAiCall(deadline)) throw error
+      return rewriteArticleWithTransientRetries(config, item, deadline, false)
     }
     throw error
   }
@@ -1000,6 +1058,19 @@ async function rewriteArticleWithFallback(
   let lastError: unknown = new Error('ai_no_provider')
 
   for (const config of configs) {
+    if (!canAttemptAiCall(deadline)) {
+      console.warn('[newsroom] ai_rewrite skip provider', {
+        provider: config.provider,
+        model: config.model,
+        remaining_ms: remainingUntilDeadline(deadline),
+        need_ms: AI_FETCH_TIMEOUT_MS,
+      })
+      lastError = lastError instanceof Error && lastError.message !== 'ai_no_provider'
+        ? lastError
+        : new Error('deadline_exceeded')
+      continue
+    }
+
     try {
       const result = await rewriteArticle(config, item, deadline)
       return { result, provider: config.provider, model: config.model }
