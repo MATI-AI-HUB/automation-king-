@@ -285,7 +285,7 @@ async function publishBufferedEditorialFallback(
     .select('id, source_name, source_url, source_published_at, title, description, image_url')
     .is('article_id', null)
     .in('status', ['pending_review', 'failed'])
-    .in('last_error', ['source_fetch_failed', 'ai_rewrite_timeout', 'ai_rewrite_invalid_json', 'ai_rewrite_model_not_found'])
+    .in('last_error', ['source_fetch_failed', 'ai_rewrite_timeout', 'ai_rewrite_invalid_json', 'ai_rewrite_truncated', 'ai_rewrite_model_not_found'])
     .order('source_published_at', { ascending: false, nullsFirst: false })
     .order('created_at', { ascending: true })
     .limit(1)
@@ -844,6 +844,49 @@ function extractJsonObject(text: string): string {
   throw new SyntaxError('unterminated_json_object')
 }
 
+function repairTruncatedJson(text: string): string {
+  const stripped = text
+    .trim()
+    .replace(/^```(?:json)?\s*/i, '')
+    .replace(/\s*```$/i, '')
+  const start = stripped.indexOf('{')
+  if (start < 0) throw new SyntaxError('no_json_object')
+
+  let depth = 0
+  let inString = false
+  let escaped = false
+  let end = stripped.length
+
+  for (let i = start; i < stripped.length; i += 1) {
+    const ch = stripped[i]
+    if (inString) {
+      if (escaped) escaped = false
+      else if (ch === '\\') escaped = true
+      else if (ch === '"') inString = false
+      continue
+    }
+    if (ch === '"') inString = true
+    else if (ch === '{') depth += 1
+    else if (ch === '}') {
+      depth -= 1
+      if (depth === 0) {
+        end = i + 1
+        break
+      }
+    }
+  }
+
+  let slice = stripped.slice(start, end)
+  if (inString) slice += '"'
+  while (depth > 0) {
+    slice += '}'
+    depth -= 1
+  }
+  slice = slice.replace(/,\s*([}\]])/g, '$1')
+  JSON.parse(slice)
+  return slice
+}
+
 function parseRewrite(content: string): RewriteResult {
   const jsonText = extractJsonObject(
     content
@@ -964,12 +1007,27 @@ async function rewriteArticleOnce(
     const content = payload.choices?.[0]?.message?.content
 
     if (!content) {
+      if (finishReason === 'length') throw new Error('ai_rewrite_truncated')
       throw new Error('ai_empty_response')
     }
 
-    const result = parseRewrite(content)
-    logCall(null)
-    return result
+    try {
+      const result = parseRewrite(content)
+      logCall(null)
+      return result
+    } catch (error) {
+      if (error instanceof SyntaxError) {
+        try {
+          const result = parseRewrite(repairTruncatedJson(content))
+          logCall(null)
+          return result
+        } catch {
+          if (finishReason === 'length') throw new Error('ai_rewrite_truncated')
+          throw error
+        }
+      }
+      throw error
+    }
   } catch (error) {
     logCall(classifyError('ai_rewrite', error))
     throw error
@@ -1041,10 +1099,14 @@ async function rewriteArticle(
   try {
     return await rewriteArticleWithTransientRetries(config, item, deadline, true)
   } catch (error) {
-    const message = error instanceof Error ? error.message : ''
-    if (message === 'ai_rewrite_http_400' || message === 'ai_rewrite_http_422') {
+    const code = classifyError('ai_rewrite', error)
+    if (code === 'ai_rewrite_http_400' || code === 'ai_rewrite_http_422') {
       if (!canAttemptAiCall(deadline)) throw error
       return rewriteArticleWithTransientRetries(config, item, deadline, false)
+    }
+    if (code === 'ai_rewrite_invalid_json') {
+      if (!canAttemptAiCall(deadline)) throw error
+      return rewriteArticleOnce(config, item, deadline, false)
     }
     throw error
   }
@@ -1120,6 +1182,7 @@ function classifyError(
   if (message === 'invalid_https_url') return `${stage}_invalid_url`
   if (message === 'chat_ai_config_incomplete') return 'ai_rewrite_missing_env'
   if (message === 'ai_empty_response') return 'ai_rewrite_empty'
+  if (message === 'ai_rewrite_truncated') return 'ai_rewrite_truncated'
   if (message === 'invalid_rewrite_payload') return 'ai_rewrite_invalid_payload'
   if (message === 'invalid_rewrite_payload_bengali_quality') return 'ai_rewrite_bengali_quality'
   if (error instanceof SyntaxError) return `${stage}_invalid_json`
