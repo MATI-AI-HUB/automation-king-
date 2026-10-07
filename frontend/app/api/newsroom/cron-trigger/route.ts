@@ -892,6 +892,9 @@ async function rewriteArticleOnce(
   jsonMode: boolean,
 ): Promise<RewriteResult> {
   const endpoint = `${config.baseUrl}/chat/completions`
+  const startedAt = Date.now()
+  let httpStatus: number | null = null
+  let finishReason: string | null = null
 
   const requestBody: Record<string, unknown> = {
     model: config.model,
@@ -914,36 +917,61 @@ async function rewriteArticleOnce(
     requestBody.response_format = { type: 'json_object' }
   }
 
-  const { response, text } = await fetchTextLimited(
-    endpoint,
-    {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${config.apiKey}`,
-        'content-type': 'application/json',
+  const logCall = (reviewReason: string | null) => {
+    console.info('[newsroom] ai_rewrite call', {
+      provider: config.provider,
+      model: config.model,
+      elapsed_ms: Date.now() - startedAt,
+      http_status: httpStatus,
+      finish_reason: finishReason,
+      json_mode: jsonMode,
+      review_reason: reviewReason,
+    })
+  }
+
+  try {
+    const { response, text } = await fetchTextLimited(
+      endpoint,
+      {
+        method: 'POST',
+        headers: {
+          authorization: `Bearer ${config.apiKey}`,
+          'content-type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
       },
-      body: JSON.stringify(requestBody),
-    },
-    deadline,
-    MAX_AI_RESPONSE_BYTES,
-    15_000,
-  )
+      deadline,
+      MAX_AI_RESPONSE_BYTES,
+      15_000,
+    )
 
-  if (!response.ok) {
-    throw new Error(classifyAiHttp(response.status))
+    httpStatus = response.status
+
+    if (!response.ok) {
+      throw new Error(classifyAiHttp(response.status))
+    }
+
+    const payload = JSON.parse(text) as {
+      choices?: Array<{
+        message?: { content?: string | null }
+        finish_reason?: string | null
+      }>
+    }
+
+    finishReason = payload.choices?.[0]?.finish_reason ?? null
+    const content = payload.choices?.[0]?.message?.content
+
+    if (!content) {
+      throw new Error('ai_empty_response')
+    }
+
+    const result = parseRewrite(content)
+    logCall(null)
+    return result
+  } catch (error) {
+    logCall(classifyError('ai_rewrite', error))
+    throw error
   }
-
-  const payload = JSON.parse(text) as {
-    choices?: Array<{ message?: { content?: string | null } }>
-  }
-
-  const content = payload.choices?.[0]?.message?.content
-
-  if (!content) {
-    throw new Error('ai_empty_response')
-  }
-
-  return parseRewrite(content)
 }
 
 async function rewriteArticle(
