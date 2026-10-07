@@ -32,6 +32,7 @@ const MAX_ARTICLE_BYTES = 512 * 1024
 const MAX_CONCURRENCY = 4
 const INTERNAL_DEADLINE_MS = 54_000
 const AI_FETCH_TIMEOUT_MS = 15_000
+const AI_MAX_TOKENS = 3000
 const AI_TRANSIENT_RETRY_DELAYS_MS = [400, 800]
 const ARTICLE_FETCH_TIMEOUT_MS = 10_000
 const FULL_TEXT_MIN_CHARS = 400
@@ -955,11 +956,15 @@ async function rewriteArticleOnce(
       },
     ],
     temperature: 0.2,
-    max_tokens: 1800,
+    max_tokens: AI_MAX_TOKENS,
   }
 
   if (jsonMode) {
     requestBody.response_format = { type: 'json_object' }
+  }
+
+  if (config.provider === 'groq' && /gpt-oss/i.test(config.model)) {
+    requestBody.reasoning_effort = 'low'
   }
 
   const logCall = (reviewReason: string | null) => {
@@ -1107,6 +1112,10 @@ async function rewriteArticle(
     if (code === 'ai_rewrite_invalid_json') {
       if (!canAttemptAiCall(deadline)) throw error
       return rewriteArticleOnce(config, item, deadline, false)
+    }
+    if (code === 'ai_rewrite_truncated') {
+      if (!canAttemptAiCall(deadline)) throw error
+      return rewriteArticleOnce(config, item, deadline, true)
     }
     throw error
   }
