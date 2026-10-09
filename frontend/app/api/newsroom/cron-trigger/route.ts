@@ -26,17 +26,18 @@ export const dynamic = 'force-dynamic'
 export const maxDuration = 60
 
 const MAX_ITEMS_PER_SOURCE = 6
-// Try a small bounded set so one blocked source does not waste the whole window,
-// while the run-level cap below still permits at most one public article.
-const MAX_CANDIDATES = 3
+// Bounded set so one blocked source does not waste the whole window.
+// Deadline + per-candidate budget still stop the run before Vercel maxDuration.
+const MAX_CANDIDATES = 8
+const MAX_PUBLISHES_PER_RUN = 4
 const MAX_FEED_BYTES = 2 * 1024 * 1024
 const MAX_ARTICLE_BYTES = 512 * 1024
 const SOURCE_FETCH_CONCURRENCY = 3
 const ARTICLE_PROCESS_CONCURRENCY = 1
-const INTERNAL_DEADLINE_MS = 45_000
-const MIN_CANDIDATE_BUDGET_MS = 24_000
+const INTERNAL_DEADLINE_MS = 54_000
+const MIN_CANDIDATE_BUDGET_MS = 16_000
 const AI_FETCH_TIMEOUT_MS = 16_000
-const AI_MAX_TOKENS = 600
+const AI_MAX_TOKENS = 1800
 const AI_TRANSIENT_RETRY_DELAYS_MS = [1_000]
 const ARTICLE_FETCH_TIMEOUT_MS = 10_000
 const FULL_TEXT_MIN_CHARS = 400
@@ -1493,16 +1494,16 @@ async function runCronTrigger() {
         skipReasons.add('batch_limit')
       }
 
-      let publishedThisRun = false
+      let publishedThisRun = 0
       await runPool(batch, ARTICLE_PROCESS_CONCURRENCY, async ({ source, item }) => {
         if (contentBlockedSources.has(source.id)) {
           stats.skipped += 1
           skipReasons.add('source_content_unavailable')
           return
         }
-        if (publishedThisRun) {
+        if (publishedThisRun >= MAX_PUBLISHES_PER_RUN) {
           stats.skipped += 1
-          skipReasons.add('one_publish_per_run')
+          skipReasons.add('publish_cap_reached')
           return
         }
         if (Date.now() >= deadline - MIN_CANDIDATE_BUDGET_MS) {
@@ -1840,7 +1841,7 @@ async function runCronTrigger() {
 
         if (publishNow) {
           stats.ingested += 1
-          publishedThisRun = true
+          publishedThisRun += 1
           const platforms = ['facebook', 'instagram', 'x', 'linkedin', 'telegram']
           const { error: socialQueueError } = await supabase.from('social_posts').upsert(
             platforms.map((platform) => ({
@@ -2053,6 +2054,7 @@ async function runCronTrigger() {
       disabled: disabledSources,
       locked_by: 'cron',
       max_candidates: MAX_CANDIDATES,
+      max_publishes_per_run: MAX_PUBLISHES_PER_RUN,
       max_items_per_source: MAX_ITEMS_PER_SOURCE,
     }
 
