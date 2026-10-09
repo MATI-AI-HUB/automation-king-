@@ -157,7 +157,7 @@ jobs:
     if: github.event_name == 'workflow_dispatch' || github.event_name == 'workflow_call' || startsWith(github.ref, 'refs/tags/v')
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v7
         with:
           name: banglar-voice-apks
           path: apks
