@@ -1,0 +1,37 @@
+name: supabase-drift-check
+on: workflow_dispatch
+jobs:
+  drift:
+    runs-on: ubuntu-latest
+    env:
+      DB: ${{ secrets.SUPABASE_DB_URL }}
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: supabase/setup-cli@v1
+        with:
+          version: latest
+      - name: Remote inventory
+        run: |
+          REF=$(echo "${{ secrets.SUPABASE_URL }}" | sed -E 's#https://([^.]+)\..*#\1#')
+          {
+            echo "## Cron jobs"; psql "$DB" -c "select jobname,schedule,active from cron.job order by 1"
+            echo "## Extensions"; psql "$DB" -c "select extname from pg_extension order by 1"
+            echo "## Buckets"; psql "$DB" -c "select id,public from storage.buckets"
+            echo "## Policies per table"; psql "$DB" -c "select tablename,count(*) from pg_policies where schemaname='public' group by 1 order by 1"
+            echo "## Applied migrations"; psql "$DB" -c "select version from supabase_migrations.schema_migrations order by 1"
+            echo "## Edge functions"; supabase functions list --project-ref "$REF"
+          } 2>&1 | tee inventory.txt >> "$GITHUB_STEP_SUMMARY"
+      - name: Schema drift (remote vs repo migrations)
+        run: |
+          supabase db diff --db-url "$DB" --schema public,storage > drift.sql 2> drift.err || true
+          echo '## Drift SQL' >> "$GITHUB_STEP_SUMMARY"
+          head -c 20000 drift.sql >> "$GITHUB_STEP_SUMMARY"
+          cat drift.err | tail -20 >> "$GITHUB_STEP_SUMMARY"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: supabase-drift
+          path: |
+            inventory.txt
+            drift.sql
+            drift.err
