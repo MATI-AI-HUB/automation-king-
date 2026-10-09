@@ -12,7 +12,7 @@
     "check:publish-gate": "cmp -s lib/publish-gate.ts ../worker/src/lib/publish-gate.ts"
   },
   "dependencies": {
-    "@sentry/nextjs": "^10.74.0",
+    "@sentry/nextjs": "^11.4.0",
     "@supabase/ssr": "^0.12.7",
     "@supabase/supabase-js": "^2.45.4",
     "@upstash/ratelimit": "^2.0.8",
