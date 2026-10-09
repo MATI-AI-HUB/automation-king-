@@ -1,5 +1,9 @@
 name: supabase-drift-check
-on: workflow_dispatch
+on:
+  workflow_dispatch:
+  push:
+    branches: [release/neutral]
+    paths: [".github/workflows/supabase-drift-check.yml"]
 jobs:
   drift:
     runs-on: ubuntu-latest
