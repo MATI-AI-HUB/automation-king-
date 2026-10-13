@@ -115,7 +115,13 @@ async function loadArticle(slug: string, _locale: Locale = 'bn'): Promise<LoadRe
     if (a && a.slug && (a.title_bn || a.body_bn)) {
       return { status: 'ok', article: a as ArticleData };
     }
-  } catch {
+  } catch (error) {
+    // Surface the real cause (env/permission/network) instead of silently
+    // converting it into a 404. Secret-free: message + public slug only.
+    console.error('[article] loadArticle failed', {
+      slug,
+      message: error instanceof Error ? error.message : String(error),
+    });
     const demo = mockArticle(slug);
     if (demo) return { status: 'ok', article: demo };
     return { status: 'missing' };

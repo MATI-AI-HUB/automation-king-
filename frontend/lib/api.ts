@@ -260,14 +260,16 @@ export const api = {
   },
 
   async article(slug: string): Promise<Record<string, unknown>> {
-    if (!supabase) {
-      return {};
-    }
     try {
       const { fetchPublishedArticleById, fetchPublishedArticleBySlug } = await import('./supabase/published-articles');
+      // Resolve a fresh server-side client inside the helpers instead of reusing
+      // the module-level browser client. That client is `null` whenever the
+      // NEXT_PUBLIC_* vars are absent from the server runtime, and the previous
+      // `if (!supabase) return {}` short-circuit turned every such request into a
+      // silent "not found" (HTTP 404) without ever querying the database.
       const data = UUID_RE.test(slug)
-        ? await fetchPublishedArticleById(slug, supabase)
-        : await fetchPublishedArticleBySlug(slug, supabase);
+        ? await fetchPublishedArticleById(slug)
+        : await fetchPublishedArticleBySlug(slug);
       if (!data) return {};
       const row = data as SupabaseArticle;
       const base = mapArticle(row);
@@ -285,7 +287,13 @@ export const api = {
         image_is_representational: Boolean(row.image_is_representational || row.is_fallback),
         tags: [] as string[],
       };
-    } catch {
+    } catch (error) {
+      // Never swallow the real cause (missing env, RLS/permission, schema drift,
+      // network). Log a secret-free summary so production 404s are diagnosable.
+      console.error('[api.article] load failed', {
+        slug,
+        message: error instanceof Error ? error.message : String(error),
+      });
       return {};
     }
   },
