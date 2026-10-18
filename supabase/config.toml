@@ -19,7 +19,3 @@ verify_jwt = true
 # then isServiceRole() still rejects anonymous callers.
 [functions.ai-gateway]
 verify_jwt = false
-
-# Authenticates with the Vault CRON_SECRET (x-cron-secret) instead of a JWT.
-[functions.social-scheduler]
-verify_jwt = false
