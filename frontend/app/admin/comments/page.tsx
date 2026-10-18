@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { redirect } from 'next/navigation';
 import { createClient } from '@/lib/supabase/server';
 import { requireAdmin } from '@/lib/server/require-admin';
-import { moderateArticleComment } from './actions';
+import { deletePendingArticleComment, moderateArticleComment } from './actions';
 
 export const dynamic = 'force-dynamic';
 
@@ -86,6 +86,12 @@ export default async function AdminCommentsPage() {
                 <input type="hidden" name="status" value="rejected" />
                 <button type="submit" className="rounded border border-border px-4 py-2 text-sm font-semibold">
                   প্রত্যাখ্যান
+                </button>
+              </form>
+              <form action={deletePendingArticleComment}>
+                <input type="hidden" name="id" value={comment.id} />
+                <button type="submit" className="rounded border border-red-300 px-4 py-2 text-sm font-semibold text-red-700">
+                  মুছে ফেলুন
                 </button>
               </form>
             </div>
