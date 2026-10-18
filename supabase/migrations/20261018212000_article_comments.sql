@@ -34,15 +34,16 @@ create index article_comments_article_status_created_idx
 alter table public.article_comments enable row level security;
 
 -- The private ledger enforces the same IP rate limit for every direct Data API
--- insert, not only requests passing through a frontend route. Raw IPs are kept
--- only as rate-limit keys and expired rows are pruned on each new submission.
+-- insert, not only requests passing through a frontend route. It stores only a
+-- deterministic 64-bit pseudonymous key, never the raw client IP; expired rows
+-- are pruned on a later successful submission.
 create table private.article_comment_rate_limits (
-  client_ip inet not null,
+  client_key bigint not null,
   occurred_at timestamptz not null default clock_timestamp()
 );
 
-create index article_comment_rate_limits_ip_time_idx
-  on private.article_comment_rate_limits (client_ip, occurred_at desc);
+create index article_comment_rate_limits_key_time_idx
+  on private.article_comment_rate_limits (client_key, occurred_at desc);
 
 revoke all on table private.article_comment_rate_limits from public, anon, authenticated, service_role;
 
@@ -55,6 +56,7 @@ as $function$
 declare
   v_headers jsonb;
   v_ip inet;
+  v_ip_hash bigint;
   v_count integer;
   v_now timestamptz := pg_catalog.clock_timestamp();
 begin
@@ -81,9 +83,8 @@ begin
 
   -- Serialize submissions for a single IP so concurrent requests cannot race
   -- past the 3-per-10-minute limit.
-  perform pg_catalog.pg_advisory_xact_lock(
-    pg_catalog.hashtextextended(v_ip::text, 0)
-  );
+  v_ip_hash := pg_catalog.hashtextextended(v_ip::text, 0);
+  perform pg_catalog.pg_advisory_xact_lock(v_ip_hash);
 
   delete from private.article_comment_rate_limits
   where occurred_at < v_now - interval '10 minutes';
@@ -91,15 +92,15 @@ begin
   select count(*)::integer
     into v_count
     from private.article_comment_rate_limits
-    where client_ip = v_ip
+    where client_key = v_ip_hash
       and occurred_at >= v_now - interval '10 minutes';
 
   if v_count >= 3 then
     raise exception 'comment_rate_limit_exceeded' using errcode = 'P0001';
   end if;
 
-  insert into private.article_comment_rate_limits (client_ip, occurred_at)
-  values (v_ip, v_now);
+  insert into private.article_comment_rate_limits (client_key, occurred_at)
+  values (v_ip_hash, v_now);
 
   return new;
 end;
@@ -212,6 +213,6 @@ comment on table public.article_comments is
   'Public article comments; submissions remain pending until an editorial role approves them.';
 
 comment on table private.article_comment_rate_limits is
-  'Short-lived per-IP rate-limit keys for article comment submissions; expired entries are pruned on submission.';
+  'Pseudonymous per-IP rate-limit keys for article comment submissions; raw IPs are not persisted and expired entries are pruned on submission.';
 
 commit;
