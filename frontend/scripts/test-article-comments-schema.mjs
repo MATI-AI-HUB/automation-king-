@@ -107,6 +107,7 @@ try {
     'comment insertion fails closed when the trusted client IP is unavailable',
     'P0001',
   );
+  await setPrincipal('anon', null, '203.0.113.10');
 
   const draftVisible = await client.query('select id from public.articles where id = $1', [draftArticle]);
   assert.equal(draftVisible.rowCount, 0);
@@ -210,7 +211,7 @@ try {
   pass('editor approval overwrites client-supplied moderator ID and timestamp');
 
   const rejected = await client.query(
-    "update public.article_comments set status = 'rejected' returning status, moderated_by where id = $1",
+    "update public.article_comments set status = 'rejected' where id = $1 returning status, moderated_by",
     [toReject.rows[0].id],
   );
   assert.equal(rejected.rows[0].status, 'rejected');
