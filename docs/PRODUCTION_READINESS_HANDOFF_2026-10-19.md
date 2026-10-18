@@ -878,3 +878,11 @@ This table is the full live ledger inventory. The repository file inventory and 
 - Current PR #38 head: `7df1fe030479bdce7d39db074dfbb7e7201a612b`, 38 commits ahead of main. Raw commit API refresh: all 38 author/committer logins `MATI-AI-HUB`, all author/committer emails `matiailearninghub@gmail.com`, no co-author trailers, all unsigned.
 - Latest observed Actions run [39169600513](https://github.com/MATI-AI-HUB/automation-king-/actions/runs/39169600513) is on prior head `fcc11135f8e903b743577cf96ff7548f85de874a` and failed before any steps. The new current head's workflow result is pending/has not yet been returned by the current run lookup. No tests are claimed passed.
 - Production remains unchanged; the latest live read-only query at `2026-10-18T21:48:36.079002Z` found no `public.article_comments` table and 58 migration-ledger rows with latest version `20261018175840`. No new environment variable, secret, staging resource, or deployment was created.
+
+## Latest CI refresh — final proposal head
+**Observation time:** 2026-10-18 21:51 UTC (2026-10-19 03:51 Bangladesh time)
+
+- Current PR #38 head is `7df1fe030479bdce7d39db074dfbb7e7201a612b`, 38 commits ahead of `main`. Raw metadata still confirms the target author/committer email and login on every branch commit, no co-author trailers, and unsigned commits.
+- Latest-head workflow run [39169617429](https://github.com/MATI-AI-HUB/automation-king-/actions/runs/39169617429) failed in about three seconds. All five jobs have empty `runner_name`, zero steps, and no logs. Typecheck, lint, build, unit tests, migration replay, RLS, concurrency, and regression tests remain **NOT RUN / BLOCKED**.
+- The rate-limit table stores only a 64-bit pseudonymous hash of the client IP, not the raw IP. The test job asserts the private table has `client_key bigint` and no `client_ip` column. Gateway spoof resistance remains a staging-only test gate.
+- Production state remains unchanged: live `article_comments` table absent at `2026-10-18T21:48:36.079002Z`; ledger still 58 rows/latest version `20261018175840`; production Vercel SHA remains `d3cb0c9a4bfcfd2557250d8c6498a8236377b9ae`. No new secret/env, staging resource, migration, merge, or deployment was created.
