@@ -37,7 +37,6 @@ export function ArticleComments({ articleSlug, locale }: Props) {
     submit: bn ? 'মন্তব্য জমা দিন' : 'Submit comment',
     pending: bn ? 'ধন্যবাদ। আপনার মন্তব্যটি পর্যালোচনার জন্য জমা হয়েছে। অনুমোদনের পর এটি দেখা যাবে।' : 'Thank you. Your comment is queued for review and will appear after approval.',
     empty: bn ? 'এখনো কোনো অনুমোদিত মন্তব্য নেই। প্রথম মন্তব্যটি আপনিই করতে পারেন।' : 'No approved comments yet. You can be the first to comment.',
-    unavailable: unavailableMessage,
     invalid: bn ? 'নাম ও মন্তব্যের ঘর ঠিকভাবে পূরণ করুন।' : 'Please check your name and comment.',
     sending: bn ? 'জমা হচ্ছে…' : 'Submitting…',
     failed: bn ? 'মন্তব্য জমা হয়নি। একটু পরে আবার চেষ্টা করুন।' : 'Comment was not submitted. Please try again shortly.',
@@ -199,7 +198,6 @@ export function ArticleComments({ articleSlug, locale }: Props) {
         </form>
       ) : null}
 
-      {articleId && !error && !notice && !loading ? null : null}
       <div aria-live="polite" className="mt-7 space-y-4">
         {loading ? <p className="text-sm text-neutral-500">{bn ? 'মন্তব্য লোড হচ্ছে…' : 'Loading comments…'}</p> : null}
         {!loading && !error && comments.length === 0 ? <p className="text-sm text-neutral-500">{copy.empty}</p> : null}
