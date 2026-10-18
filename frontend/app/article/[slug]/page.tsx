@@ -291,7 +291,7 @@ export default async function ArticlePage({ params }: PageProps) {
       <AudioPlayerWidget text={narrateText} title={displayTitle} locale={locale} />
 
       <div className="mt-10 border-t border-border pt-6 dark:border-white/10">
-        <ShareButtons title={displayTitle} />
+        <ShareButtons title={displayTitle} url={canonicalArticleUrl(a.slug)} />
       </div>
 
       <RelatedArticles currentSlug={a.slug} category={a.category} locale={locale} />
