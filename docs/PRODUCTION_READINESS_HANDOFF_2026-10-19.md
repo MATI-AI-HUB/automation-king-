@@ -769,3 +769,16 @@ Read-only query: `SELECT version, name, cardinality(statements) AS statement_cou
 | `20261018175840` | `epaper_archive_storage` | 1 | 625 |
 
 This table is the full live ledger inventory. The repository file inventory and full Git blob SHA values are in section 1 above. Stored statement counts/byte sizes are useful diff signals, but they are not cryptographic checksums; no checksum column is present in the live ledger.
+
+## Follow-up: moderated article comments and commit identity
+**Observation time:** 2026-10-18 21:24 UTC (2026-10-19 03:24 Bangladesh time)
+
+- Implementation is isolated in [Draft PR #38](https://github.com/MATI-AI-HUB/automation-king-/pull/38) because PR #37 remains documentation-only.
+- Current main/base SHA at inspection: `d3cb0c9a4bfcfd2557250d8c6498a8236377b9ae`. PR #38 head SHA: `0369167d6157c66dd86e349c96fc49ab41ec33bb`.
+- Live Supabase project `fqqdpngmftoddffvdukn` was queried read-only at `2026-10-18T21:19:53.937027Z`; `public.article_comments` did not exist at that time. The new migration is proposal-only and has not been applied.
+- PR #38 adds a moderated comment table/API/UI, an editorial queue at `/admin/comments`, input validation, a honeypot, rate limiting, and unit tests. The public API uses only the existing publishable/anon key and RLS; no service-role key is exposed.
+- All 17 commits in the implementation branch were individually inspected through the connected GitHub integration: author login and committer login are `MATI-AI-HUB` for every commit, and no commit message contains a `Co-authored-by` trailer. The integration returns raw author email as unavailable/null, so exact email `matiailearninghub@gmail.com` is **not independently verified**.
+- Repository commit search found two historical main-history commits containing `Co-authored-by: monkeycode-ai <monkeycode-ai@chaitin.com>`: `df30825579612232b78c01adb6dc92f255fd58d6` and `a157076b1c65be908fe9f3110e53c8b03896a8a4`. Main history was not rewritten and no force-push was performed; that destructive operation requires explicit approval and a recovery plan.
+- Current head CI status lookup returned no statuses and PR workflow-run lookup returned no runs. Project tests/build/typecheck and live/staging RLS tests remain **NOT RUN**.
+- Vercel read-only project/deployment access remains blocked by HTTP 403 for scope `matiailearninghub-3927`; production-serving SHA remains **UNVERIFIED**.
+- No production SQL, migration, grant/policy change, environment variable, merge, or deployment was performed. Comment feature is implemented in the draft PR only; the existing news publishing path remains unchanged by this work.
