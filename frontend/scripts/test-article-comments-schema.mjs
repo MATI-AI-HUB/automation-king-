@@ -82,6 +82,13 @@ try {
   await client.query(migration);
   pass('migration applies to a fresh PostgreSQL 17 fixture');
 
+  const rateLimitSchema = await client.query(
+    "select column_name, data_type from information_schema.columns where table_schema = 'private' and table_name = 'article_comment_rate_limits'",
+  );
+  assert.ok(rateLimitSchema.rows.some((column) => column.column_name === 'client_key' && column.data_type === 'bigint'));
+  assert.ok(!rateLimitSchema.rows.some((column) => column.column_name === 'client_ip'));
+  pass('rate limiter persists a pseudonymous key rather than a raw IP address');
+
   await setPrincipal('anon', null, '203.0.113.10');
   const publicArticleResult = await client.query('select id from public.articles where id = $1', [publicArticle]);
   assert.equal(publicArticleResult.rowCount, 1);
