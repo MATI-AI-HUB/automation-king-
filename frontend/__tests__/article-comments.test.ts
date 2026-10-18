@@ -23,7 +23,8 @@ describe('normalizeArticleCommentInput', () => {
     expect(normalizeArticleCommentInput({ displayName: 'Reader', body: '  ' })).toBeNull();
   });
 
-  it('rejects comments over the allowed length', () => {
+  it('rejects overlong names and comments', () => {
+    expect(normalizeArticleCommentInput({ displayName: 'N'.repeat(61), body: 'valid comment' })).toBeNull();
     expect(normalizeArticleCommentInput({ displayName: 'Reader', body: 'x'.repeat(2001) })).toBeNull();
   });
 
