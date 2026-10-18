@@ -805,7 +805,7 @@ This table is the full live ledger inventory. The repository file inventory and 
 - The Vercel authenticated user is `matiailearninghub@gmail.com`, username `matiailearninghub-3927`, plan `hobby`. The team listing returned no Teams. The earlier 403 came from explicitly supplying the personal-account scope as `teamId`; using the default personal-account scope worked.
 - Project `automation-king-lcb2`, project ID `prj_552hrMTjvldSlUHpcuqNqqNbhshb`.
 - Production deployment `dpl_4fE7EQeZdKKcxXtNe9o3UNbuCt86` is `READY`, created `2026-10-17T00:54:44.329Z`. Its alias list includes `www.banglarvoice24news.com` and `banglarvoice24news.com`; the apex alias redirects to `www`.
-- Production-serving Git SHA is **VERIFIED** as `d3cb0c9a4bfcfd2557250d8c6498a8236377b9ae` on `main`. No deployment was created, promoted, canceled, or changed.
+- Production-serving Git SHA is **VERIFIED** as `d3cb0c9a4bfcfd2557250d8c6498a8236377b9ae` on `main`. Raw Git metadata for that exact commit confirms author and committer email `matiailearninghub@gmail.com`; the commit is unsigned (`verified=false`, reason `unsigned`). No deployment was created, promoted, canceled, or changed.
 - Environment-variable presence was checked by name only, with decryption disabled. Existing `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are configured for production and preview. No new environment variable or secret is needed by the current database-trigger design; no values were decrypted, copied, or printed.
 
 ### Supabase / migration boundary
