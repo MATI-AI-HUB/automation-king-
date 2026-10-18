@@ -71,7 +71,9 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   let input: unknown;
   try {
-    input = await request.json();
+    const rawBody = await request.text();
+    if (rawBody.length > 10_000) return badRequest('payload_too_large', 413);
+    input = JSON.parse(rawBody);
   } catch {
     return badRequest('invalid_json');
   }
