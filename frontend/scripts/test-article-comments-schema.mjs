@@ -189,7 +189,9 @@ try {
   await setPrincipal('anon', null, '203.0.113.50');
   const approvedPublic = await client.query('select id from public.article_comments where id = $1', [toApprove.rows[0].id]);
   assert.equal(approvedPublic.rowCount, 1);
+  await client.query('RESET ROLE');
   await client.query("update public.articles set status = 'draft' where id = $1", [publicArticle]);
+  await setPrincipal('anon', null, '203.0.113.50');
   const hiddenAfterUnpublish = await client.query('select id from public.article_comments where id = $1', [toApprove.rows[0].id]);
   assert.equal(hiddenAfterUnpublish.rowCount, 0);
   pass('approved comments stop being public when their article is unpublished');
