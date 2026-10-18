@@ -333,3 +333,52 @@ The owner asked for one more authorization confirmation attempt. Read-only autho
 | Non-production fixtures/test accounts | ⛔ Not ready | Safe fixtures and role-limited accounts required for leakage tests |
 
 No build, deployment, database query/mutation, merge, release upload/publication, signing, secret rotation, scheduler change, or production modification occurred during this authorization retry.
+
+
+## Supabase connector re-check — 2026-10-19
+
+**Status: ✅ Supabase project connection verified; database review is partial and found security-advisor items.** This supersedes earlier statements that the Supabase connector was unavailable. The Supabase app is now connected in this chat and returned project data directly.
+
+### Project identity evidence (read-only connector)
+- Organization list returned organization `xchmxjjorhyaawffokqm` (`MATI-AI-HUB's`).
+- Project list returned project ID/ref `fqqdpngmftoddffvdukn`, name `MATI-AI-HUB's Project`, region `ap-northeast-1`, status `ACTIVE_HEALTHY`.
+- Database metadata: PostgreSQL 17 engine, version `17.6.1.166`, host `db.fqqdpngmftoddffvdukn.supabase.co`.
+- Project detail retrieval succeeded for project ID `fqqdpngmftoddffvdukn`.
+- No database URL, password, or token was requested or displayed in chat.
+
+### Migration ledger (read-only SQL)
+- `information_schema.tables` confirms `supabase_migrations.schema_migrations` exists.
+- Ledger columns returned: `version text`, `statements ARRAY`, `name text`, `created_by text`, `idempotency_key text`, `rollback ARRAY`.
+- Query `SELECT COUNT(*), MIN(version::text), MAX(version::text) FROM supabase_migrations.schema_migrations` returned: count **58**, first version `20260901000000`, latest version `20261018175840`.
+- Latest row: `20261018175840 / epaper_archive_storage`; preceding recent entries include social/YouTube contract migrations from `20261016232622` through `20261015135836`.
+- This verifies the live ledger content that the connector exposes. It does **not** prove every migration file in the repository has been applied, because a repository-to-ledger diff has not yet been computed from a clean checkout.
+
+### Public schema and RLS evidence
+- Verbose table inventory confirms `public.articles` has 1,419 rows and RLS enabled; `public.profiles` has RLS enabled. No row contents or PII were queried.
+- `pg_policies` summary returned policy counts for public tables. A direct catalog query found 8 public tables with RLS enabled but no matching public-schema policy:
+  `ai_gateway_key_state`, `ai_gateway_policies`, `ai_gateway_usage_events`, `social_content_calendar`, `social_platforms`, `social_post_metrics`, `social_posts`, `social_strategy_notes`.
+- Absence of policies with RLS enabled ordinarily means API roles governed by RLS cannot access rows through those policies; do not remove RLS or add policies without checking intended service-only access and grants.
+- Grant summary for `public` showed anon has 13 SELECT grants; authenticated has 28 SELECT, 15 INSERT, 13 UPDATE and 14 DELETE grants (plus some other privileges); service_role has broad privileges across 46 objects. This is a summary of direct table grants only, not a complete effective-privilege proof; default privileges, inherited roles, functions, views and schema usage need separate review.
+- Supabase Security Advisor result (observed timestamp `2026-10-18T20:51:27.206Z`) includes:
+  - 24 `rls_enabled_no_policy` findings across multiple schemas, including the 8 public tables listed above and backup/private/maintenance/env_guard/s3_security_baseline tables.
+  - 6 `authenticated_security_definer_function_executable` findings, including `current_app_role()`, `newsroom_record_review_decision(...)`, `newsroom_submit_for_verification(...)`, `platform_role()`, `requeue_failed_news(...)`, and `submit_field_report(...)`. These require intended-access review, not blind revocation.
+  - 1 `auth_leaked_password_protection` warning: leaked-password protection disabled.
+- No policies, grants, functions, passwords, or project settings were modified. No migrations were applied.
+
+### Current verdict
+- Supabase connection in this chat: **VERIFIED**.
+- Project identity and active status: **VERIFIED**.
+- Migration ledger exists and has 58 rows through `20261018175840`: **VERIFIED**.
+- All repository migrations applied: **NOT VERIFIED** pending repository migration diff.
+- Full RLS/grants security review: **PARTIAL**; findings above require targeted least-privilege review.
+- Production database was accessed only for project metadata and read-only catalog/ledger queries; no row-level article/profile content was retrieved.
+
+### Evidence query labels
+- `migration_ledger`: `information_schema.tables` lookup for `supabase_migrations.schema_migrations` returned one matching row.
+- `ledger_count_latest`: 58 / `20260901000000` / `20261018175840`.
+- `latest_migrations`: latest 10 rows returned; newest is `20261018175840 / epaper_archive_storage`.
+- `rls_enabled_without_policy`: 8 public tables listed above.
+- `public_grants_summary`: direct-grant totals above.
+- `get_advisors(type=security)`: 24 no-policy findings, 6 SECURITY DEFINER execute warnings, 1 leaked-password protection warning.
+
+No production write, deployment, merge, secret rotation, cron change, release upload, or social publishing occurred.
