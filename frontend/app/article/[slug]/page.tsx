@@ -18,6 +18,10 @@ export const revalidate = 60;
 
 const BASE = canonicalSiteUrl();
 
+function canonicalArticleUrl(slug: string): string {
+  return `${BASE}/article/${encodeURIComponent(slug)}`;
+}
+
 type PageProps = { params: Promise<{ slug: string }> };
 
 type ArticleData = {
@@ -223,7 +227,7 @@ export default async function ArticlePage({ params }: PageProps) {
           <span>• {formatBnDate(a.published_at, locale)}</span>
         ) : null}
         <span className="ml-auto">
-          <ShareButtons title={displayTitle} />
+          <ShareButtons title={displayTitle} url={canonicalArticleUrl(a.slug)} />
         </span>
       </div>
       {a.featured_image && (
