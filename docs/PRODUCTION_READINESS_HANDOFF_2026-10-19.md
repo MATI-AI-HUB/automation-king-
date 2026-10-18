@@ -382,3 +382,322 @@ No build, deployment, database query/mutation, merge, release upload/publication
 - `get_advisors(type=security)`: 24 no-policy findings, 6 SECURITY DEFINER execute warnings, 1 leaked-password protection warning.
 
 No production write, deployment, merge, secret rotation, cron change, release upload, or social publishing occurred.
+
+
+# Release Verification Round — 2026-10-19 (read-only)
+
+**Scope:** Supabase project `fqqdpngmftoddffvdukn` (PostgreSQL 17, ap-northeast-1), GitHub repository `MATI-AI-HUB/automation-king-` main, Vercel production metadata. No SQL writes, migration, grant/policy change, deployment, or release upload performed.
+
+## Status summary
+
+| Work item | Status | Evidence / result |
+|---|---|---|
+| 1. Migration inventory and exact version diff | ❌ MISMATCHES FOUND; remediation blocked pending audit | GitHub recursive tree SHA `d3cb0c9a4bfcfd2557250d8c6498a8236377b9ae`; 56 migration SQL files vs 58 live ledger rows; 47 exact version matches; 9 repo versions absent from ledger and 11 ledger versions absent from repo exact-version list. |
+| 1. Stored checksum vs file content | ⛔ BLOCKED / NOT REPRESENTED | Live ledger columns are version, statements ARRAY, name, created_by, idempotency_key, rollback ARRAY. No checksum column exists. Git blob SHA values are available, but cannot be compared to a ledger checksum that is not stored. Statement-count/byte evidence exists below; no hash equivalence claimed. |
+| 2a. RLS-enabled/no-policy findings | ✅ Catalog and grants reviewed; intent partially inferred | Advisor returned 24 findings. All 24 advisor tables are inventoried below. No direct anon/authenticated/PUBLIC table grants found for those 24; service-role-only/internal objects are provisionally safe from those grants, but intended access needs owner confirmation. Additional `realtime.messages` has RLS enabled, no policy, and anon/authenticated grants/schema USAGE; P1 investigate separately. |
+| 2b. SECURITY DEFINER functions | ✅ Metadata and selected function bodies reviewed; hardening follow-up | Six advisor functions are listed below. All owners postgres. Four have empty search_path; `newsroom_submit_for_verification` has `pg_catalog, public`; `requeue_failed_news` has `pg_catalog, pg_temp`. Body checks found role/ownership gates in reviewed functions; no code was changed. |
+| 2c. Leaked-password protection | ⚠️ Finding confirmed; change not made | Security Advisor warning `auth_leaked_password_protection` says disabled. Enablement is a project Auth setting and requires explicit approval. |
+| 3. Effective grants/RPC and article/profile policy audit | ✅ Read-only catalog review completed; some grants are overbroad candidates | Public anon/auth table grants, schema USAGE, callable public functions, and policies for articles/profiles and selected public objects are recorded below. |
+| 4. Vercel production SHA | ⛔ BLOCKED: 403 | Read-only deployment list request returned HTTP 403 for scope `matiailearninghub-3927`, request ID `sin1:sfo1::ll6c7-1792357189199-ebc1692d17b2`. Production SHA cannot be verified. Dashboard: https://vercel.com/dashboard . Need a read-scoped Vercel token or reauthorization in that exact scope; do not paste tokens in chat. |
+| CI/Codespace full frontend suite | ⛔ NEXT-ROUND PREREQUISITE | No Codespace terminal session in this execution. Full npm ci, tsc, lint, build, and Vitest suite remain unrun. |
+
+## 1. Migration completeness — evidence and full inventory
+
+Repository tree endpoint: https://api.github.com/repos/MATI-AI-HUB/automation-king-/git/trees/main?recursive=1
+Human-readable directory: https://github.com/MATI-AI-HUB/automation-king-/tree/main/supabase/migrations
+Main SHA: `d3cb0c9a4bfcfd2557250d8c6498a8236377b9ae`
+Live ledger query: `SELECT version, name, cardinality(statements), octet_length(array_to_string(statements,E'\\n')) FROM supabase_migrations.schema_migrations ORDER BY version;`
+Observed ledger: 58 rows; first `20260901000000 init_schema`; latest `20261018175840 epaper_archive_storage`.
+
+### Repository files (all 56)
+
+| Version prefix | File | Git blob SHA-1 | Comparison |
+|---|---|---|---|
+| `20260901000000` | `20260901000000_init_schema.sql` | `d9b95c6d5710d8e97c7a006e05d8b0d00d52d79c` | MATCH |
+| `20260901000001` | `20260901000001_storage.sql` | `c553b7997eb542f6b6e2915a233ce2d5ff65e32e` | MATCH |
+| `20260909000001` | `20260909000001_security.sql` | `c854c6aac95da9e4a41612fa87306558037acfcd` | MATCH |
+| `20260909` | `20260909_revenue_hooks.sql` | `34663d31291fab60c688ec76625f83b7aab4f110` | MATCH |
+| `20260912000001` | `20260912000001_db_optimization.sql` | `81b26fed77f5d8685ea52e5e9dc35cbb7f8f924c` | MATCH |
+| `20260912` | `20260912_ai_audit_log.sql` | `184238cb2a52d16335cfdd98422597c494c19264` | MATCH |
+| `20260920` | `20260920_source_registry.sql` | `45beb60ec428829d057839987478c8d22c7f89d2` | MATCH |
+| `20260925` | `20260925_newsroom_automation.sql` | `680bfd142c4cd673832d500976f14e9216d22cbc` | MATCH |
+| `20260929000001` | `20260929000001_platform_contract.sql` | `e65cd636ae4f71bf22cb766e9236735517182569` | MATCH |
+| `20260929` | `20260929_articles_rls_pgcron.sql` | `b1d9cb4f09ad6890cdfbd6bad06536a36a4580d0` | MATCH |
+| `20261001000000` | `20261001000000_grant_articles_access.sql` | `9f4f89ea59f6468eec9cee9abd52252674956b55` | MATCH |
+| `20261002000000` | `20261002000000_public_article_views.sql` | `a3503f5c7af0c3fe8262285181fd3f806ae557bb` | MATCH |
+| `20261002120000` | `20261002120000_article_unique_indexes.sql` | `2a5a3d9ad09d492d09e5b01a54697ac67fd076b7` | MATCH |
+| `20261005100000` | `20261005100000_atomic_news_pipeline_lock.sql` | `481482123be689ee8f25196c49b41ab612ed02d9` | MATCH |
+| `20261005210000` | `20261005210000_source_expansion.sql` | `44c3cc4d930b61d27a49ef9341baf0646f832ddf` | MATCH |
+| `20261005220000` | `20261005220000_public_feed_grant.sql` | `5ea09597e02f387d68dd70514ad166a5d61122da` | MATCH |
+| `20261006070000` | `20261006070000_harden_pipeline_lock_rpc.sql` | `0ab45ec4cee13d103cd3684134fb9b4e28d0dd82` | MATCH |
+| `20261006090000` | `20261006090000_social_posts_audit.sql` | `93f32d4d5ee7220a4be0b03242dc3c6da9f330d3` | MATCH |
+| `20261006101852` | `20261006101852_epaper_editions.sql` | `fb974563c9411304a78464b41113fb91d7f1ae18` | MATCH |
+| `20261006101925` | `20261006101925_epaper_edition_pages.sql` | `96c2d981c462a7f4129d2ee52823a042e40d2ef3` | MATCH |
+| `20261006170000` | `20261006170000_epaper_editions.sql` | `67513324ab62ab3b96a003986dc7f250e1bae8da` | MATCH |
+| `20261006190000` | `20261006190000_quarantine_low_quality_articles.sql` | `45eb9236fb4d4d3db105729307b3144adce4132f` | MATCH |
+| `20261006191500` | `20261006191500_brand_card_images.sql` | `4633cfc85a58d5b1fe08bb5043ae46ae94a1bb7a` | MATCH |
+| `20261007000000` | `20261007000000_security_hardening_report.sql` | `dd51ea389ec63560cbe64dbae2f8e47dd75755f8` | MATCH |
+| `20261007000001` | `20261007000001_fix_search_path.sql` | `4ddffc6245b5e9d3cfa04ea8716a5dbe5d202f52` | MATCH |
+| `20261007000002` | `20261007000002_consolidate_policies.sql` | `1002ddf43e6cdd3fe6bd3d34c05e30d461951b46` | MATCH |
+| `20261007000003` | `20261007000003_move_extensions.sql` | `e1e7e0f5c2b380720a7da0ea8fe6515d23120ab7` | MATCH |
+| `20261008000000` | `20261008000000_ai_gateway.sql` | `5e5f1ff0a89c1f5cc0df9c9d06f7a2c5408bfd6a` | MATCH |
+| `20261008000001` | `20261008000001_ai_gateway_enrollment.sql` | `3c69fa770b6240606053f6f522043be0e89edcc2` | MATCH |
+| `20261008185200` | `20261008185200_vault_backed_production_scheduler.sql` | `87a752e54f32e24d96717591a3a70bfdef80a99a` | MATCH |
+| `20261008190500` | `20261008190500_article_image_rights_audit.sql` | `12cd0f870d3270f2be4f1dfda623b32f9f76672a` | MATCH |
+| `20261009022004` | `20261009022004_independent_gemini_fallback.sql` | `92954ce66a195b7494bff8d309584859ac8eb137` | MATCH |
+| `20261009023526` | `20261009023526_newsroom_failed_retry_scheduler.sql` | `f230e54451c715f9b0984685a7f60223ceb366b5` | MATCH |
+| `20261009030000` | `20261009030000_source_health_observability.sql` | `894d673567c739b8263e812ea7849d4da27ec09d` | MATCH |
+| `20261009030100` | `20261009030100_record_source_probe.sql` | `21c15484941522df5751e5c731b426332d275239` | MATCH |
+| `20261009040000` | `20261009040000_world_class_sources_and_schedule.sql` | `5c9bacee132299bc95c8f69df3ca9a9b1dbf2674` | MATCH |
+| `20261009150000` | `20261009150000_security_and_retry_scheduler.sql` | `fa055ac52a9397fb2b6112061bf2b73cd32b7ef1` | MATCH |
+| `20261010000000` | `20261010000000_vault_wrappers.sql` | `306e9a2e5a4ece47515cd1f57a193d3ac5d36180` | MATCH |
+| `20261010010000` | `20261010010000_sync_unversioned_objects.sql` | `fcf818e64207b1cfc31c23e03cbbb3905e6fbf0e` | MATCH |
+| `20261011000001` | `20261011000001_add_slug_title.sql` | `c9327920ec60a14bf146fa1cb2835aa016e0f42c` | MATCH |
+| `20261012000001` | `20261012000001_fix_data_quality.sql` | `b69c5da81ad9e5d6f65864263fe16aea5e5335aa` | MATCH |
+| `20261012000003` | `20261012000003_fix_null_slugs.sql` | `d81a2365b1da740385a32440aecf48a62eeac12b` | MATCH |
+| `20261012000004` | `20261012000004_fix_rls_anon.sql` | `d10ef093d178f40b4bbcfac7409648d0ec0faaf5` | MATCH |
+| `20261012000005` | `20261012000005_fix_feed_columns_and_anon.sql` | `6c375f58f927dab286c573defea0d8dee5881cc7` | MATCH |
+| `20261012000010` | `20261012000010_premium_rls_and_ai_policy.sql` | `f87ed6b86ea265ca69abf4ed591ade7bbae5647a` | MATCH |
+| `20261012000020` | `20261012000020_social_platform_registry.sql` | `7906866dccffe75fd2126309e0c034ecf3aba371` | MATCH |
+| `20261013034809` | `20261013034809_social_manager_tables.sql` | `c94e7746778226cefe65f556ca79d01d85e99da5` | MATCH |
+| `20261013140000` | `20261013140000_social_readiness_limits.sql` | `8d8eb4e35ce447e5e3724b25c3eb8f31ff999cdb` | NO LEDGER VERSION/NAME MATCH — audit; do not apply |
+| `20261015000000` | `20261015000000_social_platform_contract.sql` | `048eea5d0d218868270a0e90ffbb7fde4032cd83` | VERSION MISMATCH; same logical name in ledger |
+| `20261015210000` | `20261015210000_social_reconciliation_audit.sql` | `48eb252ba39177e1f9d8b1d46c5deb837ecbb5bd` | VERSION MISMATCH; same logical name in ledger |
+| `20261015213000` | `20261015213000_epaper_cron_route.sql` | `eaef4115fcf92066bea9b711361d23317700e641` | VERSION MISMATCH; same logical name in ledger |
+| `20261016003500` | `20261016003500_epaper_cron_secret_alias.sql` | `36b4d431fc1b002f6df7475d85f2fec023d524fb` | VERSION MISMATCH; same logical name in ledger |
+| `20261016005000` | `20261016005000_youtube_inventory_contract.sql` | `38a80624a44a8875e144e75cb2b6fee16bb1c64f` | VERSION MISMATCH; same logical name in ledger |
+| `20261016005100` | `20261016005100_youtube_sync_schedule.sql` | `2dab342dff2b8c8a7af35b53519150873056c765` | VERSION MISMATCH; same logical name in ledger |
+| `20261016011500` | `20261016011500_youtube_quarantine_contract.sql` | `7fad37be7c407336c561f907f1f489cabd7f7762` | VERSION MISMATCH; same logical name in ledger |
+| `20261017053000` | `20261017053000_social_vault_contract.sql` | `e22e841de4160c2779414b0e8bb7e32c8bdd5ca0` | VERSION MISMATCH; same logical name in ledger |
+
+### Repo version absent from live ledger (9)
+
+| Repo version | Repo file | Same logical name found in ledger | Interpretation |
+|---|---|---|---|
+| `20261013140000` | `20261013140000_social_readiness_limits.sql` | — | No matching ledger name/version; likely unapplied or removed from ledger; audit first. |
+| `20261015000000` | `20261015000000_social_platform_contract.sql` | 20261015135836 (social_platform_contract) | Timestamp/version differs; compare SQL before remediation. |
+| `20261015210000` | `20261015210000_social_reconciliation_audit.sql` | 20261015144502 (social_reconciliation_audit) | Timestamp/version differs; compare SQL before remediation. |
+| `20261015213000` | `20261015213000_epaper_cron_route.sql` | 20261015150835 (epaper_cron_route) | Timestamp/version differs; compare SQL before remediation. |
+| `20261016003500` | `20261016003500_epaper_cron_secret_alias.sql` | 20261015183528 (epaper_cron_secret_alias) | Timestamp/version differs; compare SQL before remediation. |
+| `20261016005000` | `20261016005000_youtube_inventory_contract.sql` | 20261015184837 (youtube_inventory_contract) | Timestamp/version differs; compare SQL before remediation. |
+| `20261016005100` | `20261016005100_youtube_sync_schedule.sql` | 20261015184844 (youtube_sync_schedule) | Timestamp/version differs; compare SQL before remediation. |
+| `20261016011500` | `20261016011500_youtube_quarantine_contract.sql` | 20261015194444 (youtube_quarantine_contract) | Timestamp/version differs; compare SQL before remediation. |
+| `20261017053000` | `20261017053000_social_vault_contract.sql` | 20261016232622 (social_vault_contract) | Timestamp/version differs; compare SQL before remediation. |
+
+### Live ledger version absent from exact repo version (11)
+
+| Ledger version | Ledger name | Same logical name in repo | Interpretation |
+|---|---|---|---|
+| `20261013041043` | `social_manager_schedule` | — | Orphan ledger entry; source migration absent from current main branch; recover from history/release artifact before any remediation. |
+| `20261015135836` | `social_platform_contract` | 20261015000000 (20261015000000_social_platform_contract.sql) | Version mismatch with same-name repo file; audit SQL contents. |
+| `20261015144502` | `social_reconciliation_audit` | 20261015210000 (20261015210000_social_reconciliation_audit.sql) | Version mismatch with same-name repo file; audit SQL contents. |
+| `20261015150835` | `epaper_cron_route` | 20261015213000 (20261015213000_epaper_cron_route.sql) | Version mismatch with same-name repo file; audit SQL contents. |
+| `20261015183528` | `epaper_cron_secret_alias` | 20261016003500 (20261016003500_epaper_cron_secret_alias.sql) | Version mismatch with same-name repo file; audit SQL contents. |
+| `20261015184837` | `youtube_inventory_contract` | 20261016005000 (20261016005000_youtube_inventory_contract.sql) | Version mismatch with same-name repo file; audit SQL contents. |
+| `20261015184844` | `youtube_sync_schedule` | 20261016005100 (20261016005100_youtube_sync_schedule.sql) | Version mismatch with same-name repo file; audit SQL contents. |
+| `20261015194444` | `youtube_quarantine_contract` | 20261016011500 (20261016011500_youtube_quarantine_contract.sql) | Version mismatch with same-name repo file; audit SQL contents. |
+| `20261016223348` | `social_youtube_vault_contract` | — | Orphan ledger entry; source migration absent from current main branch; recover from history/release artifact before any remediation. |
+| `20261016232622` | `social_vault_contract` | 20261017053000 (20261017053000_social_vault_contract.sql) | Version mismatch with same-name repo file; audit SQL contents. |
+| `20261018175840` | `epaper_archive_storage` | — | Orphan ledger entry; source migration absent from current main branch; recover from history/release artifact before any remediation. |
+
+### Migration interpretation and checksum limitation
+
+- Eight of the nine repo-only version prefixes have same-name ledger entries at different timestamps (examples: `social_platform_contract`, `social_reconciliation_audit`, `epaper_cron_route`, YouTube contracts and `social_vault_contract`). This is a **version/name drift**, not evidence by itself that their SQL did not run. Compare the exact SQL stored in the ledger and repository before proposing any reconciliation.
+- Repo file `20261013140000_social_readiness_limits.sql` has no exact version or same-name ledger row. It is the clearest candidate for “repo-only / possibly unapplied”; **do not apply it**. Proposal only after SQL review and confirmation of live schema.
+- Ledger rows `20261013041043 social_manager_schedule`, `20261016223348 social_youtube_vault_contract`, and `20261018175840 epaper_archive_storage` have no same-name migration file in current `main`. The remaining exact-version absences have same-name repo files at other versions. Treat all as audit/orphan candidates, not automatic deletion.
+- The live migration table has no checksum column. It stores statements arrays; statement counts/bytes can be compared, but a true checksum comparison is **not available from the schema as defined**. Do not claim checksum pass.
+- No migration was applied or reconciled.
+
+## 2a. RLS enabled but no policy — all 24 Advisor findings
+
+Advisor remediation reference: https://supabase.com/docs/guides/database/database-linter?lint=0008_rls_enabled_no_policy
+Observed at: 2026-10-18T21:00:43.066Z.
+Classification rule: “provisionally safe/internal” means no direct table grant to anon/authenticated/PUBLIC was found in `information_schema.role_table_grants`; it does not prove the business intent. “Risky” means an API role has a direct grant without an RLS policy.
+
+| Schema.table | Owner | Direct grants to anon/authenticated/service_role/PUBLIC | Classification |
+|---|---|---|---|
+| `backup.articles_20261002` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `backup.news_pipeline_runs_20261002` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `env_guard.marker` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `maintenance.security_hardening_report` | `postgres` | service_role:DELETE, service_role:INSERT, service_role:REFERENCES, service_role:SELECT, service_role:TRIGGER, service_role:TRUNCATE, service_role:UPDATE | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `private.ai_gateway_health_summaries` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `public.ai_gateway_key_state` | `postgres` | service_role:DELETE, service_role:INSERT, service_role:REFERENCES, service_role:SELECT, service_role:TRIGGER, service_role:TRUNCATE, service_role:UPDATE | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `public.ai_gateway_policies` | `postgres` | service_role:DELETE, service_role:INSERT, service_role:REFERENCES, service_role:SELECT, service_role:TRIGGER, service_role:TRUNCATE, service_role:UPDATE | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `public.ai_gateway_usage_events` | `postgres` | service_role:DELETE, service_role:INSERT, service_role:REFERENCES, service_role:SELECT, service_role:TRIGGER, service_role:TRUNCATE, service_role:UPDATE | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `public.social_content_calendar` | `postgres` | service_role:DELETE, service_role:INSERT, service_role:REFERENCES, service_role:SELECT, service_role:TRIGGER, service_role:TRUNCATE, service_role:UPDATE | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `public.social_platforms` | `postgres` | service_role:DELETE, service_role:INSERT, service_role:REFERENCES, service_role:SELECT, service_role:TRIGGER, service_role:TRUNCATE, service_role:UPDATE | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `public.social_post_metrics` | `postgres` | service_role:DELETE, service_role:INSERT, service_role:REFERENCES, service_role:SELECT, service_role:TRIGGER, service_role:TRUNCATE, service_role:UPDATE | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `public.social_posts` | `postgres` | service_role:DELETE, service_role:INSERT, service_role:REFERENCES, service_role:SELECT, service_role:TRIGGER, service_role:TRUNCATE, service_role:UPDATE | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `public.social_strategy_notes` | `postgres` | service_role:DELETE, service_role:INSERT, service_role:REFERENCES, service_role:SELECT, service_role:TRIGGER, service_role:TRUNCATE, service_role:UPDATE | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `s3_security_baseline.column_acl_snapshot` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `s3_security_baseline.default_acl_snapshot` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `s3_security_baseline.function_acl_snapshot` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `s3_security_baseline.policy_snapshot` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `s3_security_baseline.relation_acl_snapshot` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `s3_security_baseline.rls_flags_snapshot` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `s3_security_baseline.s3_0b_default_acl_snapshot` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `s3_security_baseline.source_name_backfill_snapshot` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `s3_security_baseline.storage_policy_snapshot` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `s3_security_baseline.storage_snapshot` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+| `s3_security_baseline.trigger_snapshot` | `postgres` | (no direct grants to listed roles) | PROVISIONALLY SAFE / INTERNAL — no anon/authenticated/PUBLIC table grant |
+
+**Separate catalog anomaly not in the 24 Advisor findings:** `realtime.messages` has RLS enabled and zero policies; direct grants include anon/authenticated/service_role INSERT, SELECT, UPDATE, and schema USAGE is granted to anon/authenticated/service_role. This may be a Supabase Realtime internal authorization design, but current catalog evidence does not show a policy. **P1 investigate with Realtime configuration/usage owner before changing it.** Do not add a generic policy blindly.
+
+### Draft policy SQL
+
+No policy SQL is proposed for the 24 Advisor tables yet: catalog grants show none of them has direct anon/authenticated/PUBLIC table grants, so a guessed policy could unnecessarily expose internal backups, security snapshots, Auth internals, or service-only AI/social state. Confirm the intended API access first. For `realtime.messages`, a generic policy is unsafe without the channel/topic authorization model; review only, no SQL executed.
+
+## 2b. SECURITY DEFINER function review (6 Advisor warnings)
+
+Advisor remediation reference: https://supabase.com/docs/guides/database/database-linter?lint=0029_authenticated_security_definer_function_executable
+
+| Function | Owner | search_path config | Execute roles observed | Verdict |
+|---|---|---|---|---|
+| `current_app_role()` | postgres | `search_path=""` | `authenticated, service_role` | P2 likely intended helper for RLS; fully qualified references and empty search_path observed |
+| `newsroom_record_review_decision(p_article_id uuid, p_decision text, p_article_version_hash text, p_reason text, p_authority_approval boolean)` | postgres | `search_path=""` | `authenticated, service_role` | P2 review; guards observed for editor/chief_editor/admin, valid decisions, version hash, authority approval |
+| `newsroom_submit_for_verification(p_article_id uuid)` | postgres | `search_path="pg_catalog, public"` | `authenticated, service_role` | P2 harden search_path to empty + fully qualify references; role/ownership checks observed |
+| `platform_role()` | postgres | `search_path=""` | `authenticated, service_role` | P2 likely intended helper for RLS; fully qualified references and empty search_path observed |
+| `requeue_failed_news(p_limit integer)` | postgres | `search_path=pg_catalog, pg_temp` | `authenticated, service_role` | P1 least-privilege review; authenticated execution mutates queue though role guard checks admin/chief_editor |
+| `submit_field_report(p_report_id uuid)` | postgres | `search_path=""` | `authenticated, service_role` | P2 intended owner/draft check observed; authenticated RPC is write operation |
+
+Additional body evidence:
+- `current_app_role()`: SQL body selects only the caller's profile role using `id = auth.uid()`; SECURITY DEFINER, `SET search_path TO ''`, schema-qualified `public.profiles`. Authenticated execution appears intentional as an RLS helper.
+- `platform_role()`: maps `current_app_role()` to normalized role labels; SECURITY DEFINER, empty search_path, qualified function reference. Appears to be an RLS helper.
+- `newsroom_record_review_decision(...)`: requires authenticated user and desk_editor/chief_editor/admin role; validates decision values, workflow row, article-version hash, active policy and authority approval before writes. Search path empty; authenticated EXECUTE appears intended, but retain as a P2 review item due to privileged workflow mutation.
+- `newsroom_submit_for_verification(uuid)`: requires auth.uid and allowed editorial role, enforces reporter ownership, rejects published/archived/retracted content, hashes content and queues verification. It currently uses `search_path = pg_catalog, public`; harden to empty path with fully qualified references in a reviewed migration.
+- `requeue_failed_news(integer)`: mutates failed queue rows; body allows service_role/postgres and otherwise only admin/chief_editor. Authenticated EXECUTE is a P1 least-privilege decision: if no manual editor retry is required, restrict EXECUTE to service_role; if required, document and test that capability.
+- `submit_field_report(uuid)`: updates only a matching caller-owned draft to pending_review; empty search_path and owner/status predicate observed. Authenticated execution appears intentional, with P2 explicit-auth guard as a readability/hardening option.
+
+### Leaked password protection
+
+Advisor: https://supabase.com/docs/guides/auth/password-security#password-strength-and-leaked-password-protection
+Observed warning: leaked-password protection disabled. Proposed fix: enable the Auth leaked-password protection setting after owner approval and test login/signup behavior; **not enabled in this read-only round**.
+
+## 3. Effective permissions audit
+
+### Public schema direct table/view grants (anon/authenticated/PUBLIC)
+
+| Object | Grantee | Privileges |
+|---|---|---|
+| `ads` | authenticated | DELETE,INSERT,UPDATE |
+| `ads_public` | anon | SELECT |
+| `ads_public` | authenticated | SELECT |
+| `ai_audit_log` | authenticated | SELECT |
+| `articles` | anon | SELECT |
+| `articles` | authenticated | DELETE,INSERT,SELECT,UPDATE |
+| `audit_log` | authenticated | SELECT |
+| `breaking_ticker` | anon | SELECT |
+| `breaking_ticker` | authenticated | DELETE,INSERT,SELECT,UPDATE |
+| `epaper_editions` | anon | SELECT |
+| `epaper_editions` | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE |
+| `field_reports` | authenticated | DELETE,INSERT,SELECT,UPDATE |
+| `live_sessions` | authenticated | DELETE,INSERT,UPDATE |
+| `live_sessions_public` | anon | SELECT |
+| `live_sessions_public` | authenticated | SELECT |
+| `news_ops_hourly` | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE |
+| `news_pipeline_runs` | authenticated | SELECT |
+| `news_sources` | authenticated | DELETE,INSERT,REFERENCES,TRIGGER,TRUNCATE,UPDATE |
+| `news_sources_public` | anon | SELECT |
+| `news_sources_public` | authenticated | SELECT |
+| `newsroom_ai_runs` | authenticated | SELECT |
+| `newsroom_audit_events` | authenticated | SELECT |
+| `newsroom_claims` | authenticated | SELECT |
+| `newsroom_evidence` | authenticated | SELECT |
+| `newsroom_media_assets` | authenticated | SELECT |
+| `newsroom_review_decisions` | authenticated | SELECT |
+| `newsroom_story_workflows` | authenticated | SELECT |
+| `newsroom_verification_policies` | authenticated | SELECT |
+| `notifications` | anon | SELECT |
+| `notifications` | authenticated | DELETE,INSERT,SELECT |
+| `profiles` | authenticated | INSERT |
+| `profiles_safe` | authenticated | SELECT |
+| `public_article_detail` | anon | SELECT |
+| `public_article_detail` | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE |
+| `public_article_previews` | anon | SELECT |
+| `public_article_previews` | authenticated | SELECT |
+| `public_articles_feed` | anon | SELECT |
+| `public_articles_feed` | authenticated | DELETE,INSERT,REFERENCES,SELECT,TRIGGER,TRUNCATE,UPDATE |
+| `public_source_registry` | anon | SELECT |
+| `public_source_registry` | authenticated | SELECT |
+| `reading_history` | anon | SELECT |
+| `reading_history` | authenticated | DELETE,INSERT,SELECT,UPDATE |
+| `source_registry` | authenticated | DELETE,INSERT,UPDATE |
+| `subscriptions` | authenticated | SELECT |
+| `videos` | anon | SELECT |
+| `videos` | authenticated | DELETE,INSERT,SELECT,UPDATE |
+
+Counts observed from `information_schema.role_table_grants` across public objects:
+- anon: SELECT on 13 objects.
+- authenticated: SELECT on 28, INSERT on 15, UPDATE on 13, DELETE on 14, plus 5 REFERENCES, 5 TRIGGER, and 5 TRUNCATE grants.
+- service_role: broad privileges across 46 objects for each listed table privilege family; treat service_role as highly privileged and never expose its key.
+- `information_schema.role_usage_grants` returned no rows for public schema objects in this query. Schema-level `has_schema_privilege` separately shows anon/authenticated/service_role have USAGE on `public`; anon/authenticated also have USAGE on `realtime` and `storage`.
+
+### Public functions callable by anon/authenticated (effective privilege checks)
+
+| Function(args) | Return | SECURITY DEFINER | anon EXECUTE | authenticated EXECUTE | service_role EXECUTE | search_path |
+|---|---|---:|---:|---:|---:|---|
+| `current_app_role()` | app_role | yes | no | yes | yes | `search_path=""` |
+| `newsroom_record_review_decision(p_article_id uuid, p_decision text, p_article_version_hash text, p_reason text, p_authority_approval boolean)` | jsonb | yes | no | yes | yes | `search_path=""` |
+| `newsroom_submit_for_verification(p_article_id uuid)` | jsonb | yes | no | yes | yes | `search_path="pg_catalog, public"` |
+| `platform_role()` | text | yes | no | yes | yes | `search_path=""` |
+| `requeue_failed_news(p_limit integer)` | integer | yes | no | yes | yes | `search_path=pg_catalog, pg_temp` |
+| `set_slug_if_null()` | trigger | no | yes | yes | yes | `search_path=pg_catalog, pg_temp` |
+| `set_updated_at()` | trigger | no | yes | yes | yes | `search_path=public` |
+| `submit_field_report(p_report_id uuid)` | void | yes | no | yes | yes | `search_path=""` |
+| `touch_source_registry()` | trigger | no | yes | yes | yes | `search_path=""` |
+
+**Unexpected/overbroad grant candidates (review, do not change):**
+- `public.public_article_detail` and `public.public_articles_feed` are security-invoker views but authenticated has DELETE/INSERT/UPDATE and other table-like privileges on them. Underlying RLS may still block writes; nonetheless view privileges should normally be reduced to the intended SELECT-only API contract. P1 review.
+- `anon` has SELECT on `notifications` and `reading_history`, but their policies shown below do not grant anon row access: notifications has authenticated user-only SELECT; reading_history requires authenticated auth.uid ownership or service_role. These anon grants appear unnecessary; P2 revoke proposal after checking client compatibility.
+- Trigger-returning functions `set_slug_if_null()`, `set_updated_at()`, and `touch_source_registry()` are executable by anon/authenticated via default/public ACLs. Trigger functions cannot be called as ordinary RPCs, but default EXECUTE grants are unnecessary surface; P2 revoke PUBLIC/anon/authenticated and retain owner/service as needed after checking trigger behavior.
+- `public.profiles_safe` view selects `id, full_name, district, verified, created_at` from profiles. It currently has no anon SELECT grant; authenticated SELECT grant exists. Confirm that the included district/name fields are appropriate for all authenticated readers before any grant expansion.
+
+### Articles and profiles — policy logic only, no row content read
+
+| Table | RLS | Grants | Relevant SELECT policy | Anonymous conclusion |
+|---|---|---|---|---|
+| `public.articles` | enabled | anon SELECT; authenticated SELECT/INSERT/UPDATE/DELETE | `status='published' AND (is_premium=false OR private.has_active_premium_subscription())` for anon/authenticated | Logged-out anon can read only published non-premium rows, assuming the premium-check function returns false without an authenticated entitlement. Draft/pending/unpublished rows are excluded by the SELECT policy. Premium access is mediated by the entitlement function. |
+| `public.profiles` | enabled | no anon grant; authenticated INSERT; service_role broad | SELECT policy only for authenticated own profile or editorial staff; UPDATE policy only own row and role must remain unchanged | Anon cannot SELECT profiles: no table grant and no anon policy. Authenticated INSERT grant has no matching INSERT policy in the inspected policy list, so RLS should deny inserts unless another applicable policy is added. |
+
+Relevant inspected policies:
+| Table | Policy | Roles | Command | Predicate |
+|---|---|---|---|---|
+| `articles` | editorial insert unpublished articles | {authenticated} | INSERT | `—` |
+| `articles` | editorial update unpublished articles | {authenticated} | UPDATE | `((current_app_role() = ANY (ARRAY['desk_editor'::app_role, 'chief_editor'::app_role, 'admin'::app_role])) AND (status = ANY (ARRAY['draft'::text, 'pending'::text, 'submitted'::text, 'approved'::text, 'archived'::text, 'retracted'::text])))` |
+| `articles` | read published articles by entitlement | {anon,authenticated} | SELECT | `((status = 'published'::text) AND ((is_premium = false) OR ( SELECT private.has_active_premium_subscription() AS has_active_premium_subscription)))` |
+| `articles` | reporters insert own original drafts | {authenticated} | INSERT | `—` |
+| `articles` | reporters update own drafts | {authenticated} | UPDATE | `((platform_role() = 'reporter'::text) AND (author_id = ( SELECT auth.uid() AS uid)) AND (status = ANY (ARRAY['draft'::text, 'pending'::text, 'submitted'::text])))` |
+| `breaking_ticker` | admin update ticker | {authenticated} | UPDATE | `(current_app_role() = 'admin'::app_role)` |
+| `breaking_ticker` | public read active ticker | {public} | SELECT | `(is_active = true)` |
+| `epaper_editions` | allow all for service | {service_role} | ALL | `true` |
+| `epaper_editions` | public read | {anon,authenticated} | SELECT | `(is_published = true)` |
+| `notifications` | service inserts notifications | {service_role} | INSERT | `—` |
+| `notifications` | user marks own read | {authenticated} | UPDATE | `(user_id = ( SELECT auth.uid() AS uid))` |
+| `notifications` | user reads own notifications | {authenticated} | SELECT | `(user_id = ( SELECT auth.uid() AS uid))` |
+| `profiles` | profiles read own or editorial | {authenticated} | SELECT | `((id = ( SELECT auth.uid() AS uid)) OR (current_app_role() = ANY (ARRAY['staff_reporter'::app_role, 'desk_editor'::app_role, 'chief_editor'::app_role, 'admin'::app_role])))` |
+| `profiles` | profiles update own fields | {authenticated} | UPDATE | `(id = ( SELECT auth.uid() AS uid))` |
+| `reading_history` | service manages reading history | {public} | ALL | `(( SELECT auth.role() AS role) = 'service_role'::text)` |
+| `reading_history` | user deletes own reading history | {authenticated} | DELETE | `(( SELECT auth.uid() AS uid) = user_id)` |
+| `reading_history` | user reads own reading history | {authenticated} | SELECT | `(( SELECT auth.uid() AS uid) = user_id)` |
+| `reading_history` | user updates own reading history | {authenticated} | UPDATE | `(( SELECT auth.uid() AS uid) = user_id)` |
+| `reading_history` | user writes own reading history | {authenticated} | INSERT | `—` |
+| `videos` | editorial manage videos | {authenticated} | ALL | `(current_app_role() = ANY (ARRAY['desk_editor'::app_role, 'chief_editor'::app_role, 'admin'::app_role]))` |
+| `videos` | public read published videos | {public} | SELECT | `(status = ANY (ARRAY['published'::text, 'live'::text]))` |
+
+Views `public_article_detail` and `public_articles_feed` are marked `security_invoker=true` and filter to `status='published'`; underlying articles RLS still applies. `public_article_previews` is a table with an anon/auth SELECT policy `true`; confirm its columns contain only intentionally public preview data before any further content expansion. No article/profile row data was queried.
+
+## 4. Vercel production SHA — blocked
+
+- Attempted read-only `GET /v7/deployments` for team `team_ePmukwxucleK8YT0jr1edKhL`, target production, limit 10.
+- HTTP **403 forbidden**, scope `matiailearninghub-3927`; request ID `sin1:sfo1::ll6c7-1792357189199-ebc1692d17b2`.
+- Project detail endpoint had also returned 403 in the preceding run. No production deployment SHA or verified deployment URL could be retrieved.
+- Expected GitHub main SHA to compare: `d3cb0c9a4bfcfd2557250d8c6498a8236377b9ae`.
+- Required access: reconnect/re-authorize Vercel connector for read-only deployments in exact scope `matiailearninghub-3927`, or configure a least-privileged `VERCEL_TOKEN` with read-only deployment/project scope in the approved Codespace/runner secret store. Do **not** paste the token into chat. Once access works, retry GET/list only and compare all 40 SHA characters.
+- Dashboard: https://vercel.com/dashboard
+
+## Priority list (proposals only)
+
+- **P1:** reconcile migration version/name drift without applying anything; review `realtime.messages` RLS/grants; decide whether authenticated users should execute `requeue_failed_news`; reduce DML grants on public article views after tests.
+- **P2:** move `newsroom_submit_for_verification` to empty search_path with fully qualified references; review authenticated SECURITY DEFINER RPC allowlist; remove unnecessary anon SELECT on `notifications`/`reading_history`; tighten trigger-function EXECUTE ACLs; verify public preview/view columns.
+- **P2 / owner approval:** enable leaked-password protection and test Auth behavior.
+- **Next-round prerequisites:** Vercel read-only scope authorization or `VERCEL_TOKEN` in runner secret store; an accessible Node 22 GitHub Codespace to run `npm ci`, TypeScript, lint, build and Vitest; no production writes. No migration, grant/policy changes, deployment or release upload were performed in this round.
