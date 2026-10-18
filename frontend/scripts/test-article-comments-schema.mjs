@@ -11,6 +11,7 @@ const client = new Client({ connectionString });
 const publicArticle = '00000000-0000-0000-0000-000000000010';
 const draftArticle = '00000000-0000-0000-0000-000000000011';
 const premiumArticle = '00000000-0000-0000-0000-000000000012';
+const cascadeArticle = '00000000-0000-0000-0000-000000000013';
 const editorId = '00000000-0000-0000-0000-000000000001';
 const readerId = '00000000-0000-0000-0000-000000000002';
 const premiumUserId = '00000000-0000-0000-0000-000000000003';
@@ -69,7 +70,7 @@ const fixture = [
   "create policy articles_read_published_by_entitlement on public.articles for select to anon, authenticated using (status = 'published' and (is_premium = false or private.has_active_premium_subscription()));",
   "insert into auth.users (id) values ('00000000-0000-0000-0000-000000000001'), ('00000000-0000-0000-0000-000000000002'), ('00000000-0000-0000-0000-000000000003');",
   "insert into public.profiles (id, role) values ('00000000-0000-0000-0000-000000000001', 'admin'), ('00000000-0000-0000-0000-000000000002', 'staff_reporter'), ('00000000-0000-0000-0000-000000000003', 'staff_reporter');",
-  "insert into public.articles (id, slug, title_bn, status, is_premium) values ('00000000-0000-0000-0000-000000000010', 'public-article', 'Public article', 'published', false), ('00000000-0000-0000-0000-000000000011', 'draft-article', 'Draft article', 'draft', false), ('00000000-0000-0000-0000-000000000012', 'premium-article', 'Premium article', 'published', true);"
+  "insert into public.articles (id, slug, title_bn, status, is_premium) values ('00000000-0000-0000-0000-000000000010', 'public-article', 'Public article', 'published', false), ('00000000-0000-0000-0000-000000000011', 'draft-article', 'Draft article', 'draft', false), ('00000000-0000-0000-0000-000000000012', 'premium-article', 'Premium article', 'published', true), ('00000000-0000-0000-0000-000000000013', 'cascade-article', 'Cascade article', 'published', false);"
 ].join('\n');
 
 try {
@@ -98,6 +99,13 @@ try {
     () => client.query("insert into public.article_comments (article_id, display_name, body, status) values ($1, 'Reader', 'Attempt to self-approve', 'approved')", [publicArticle]),
     'anonymous caller cannot set status=approved directly',
     '42501',
+  );
+
+  await setPrincipal('anon', null, '');
+  await expectReject(
+    () => insertComment(publicArticle, 'Reader', 'Missing client IP'),
+    'comment insertion fails closed when the trusted client IP is unavailable',
+    'P0001',
   );
 
   const draftVisible = await client.query('select id from public.articles where id = $1', [draftArticle]);
@@ -137,6 +145,30 @@ try {
     'P0001',
   );
 
+  const concurrentClients = await Promise.all(Array.from({ length: 5 }, async () => {
+    const concurrentClient = new Client({ connectionString });
+    await concurrentClient.connect();
+    await concurrentClient.query(
+      "select set_config('request.jwt.claim.role', $1, false), set_config('request.jwt.claim.sub', $2, false), set_config('request.headers', $3, false)",
+      ['anon', '', JSON.stringify({ 'x-forwarded-for': '203.0.113.21' })],
+    );
+    await concurrentClient.query('SET ROLE anon');
+    return concurrentClient;
+  }));
+  try {
+    const concurrentResults = await Promise.all(concurrentClients.map((concurrentClient, index) =>
+      concurrentClient.query(
+        'insert into public.article_comments (article_id, display_name, body) values ($1, $2, $3)',
+        [publicArticle, 'Concurrent ' + index, 'Concurrent rate limit test'],
+      ).then(() => ({ ok: true }), (error) => ({ ok: false, error })),
+    ));
+    assert.equal(concurrentResults.filter((result) => result.ok).length, 3);
+    assert.equal(concurrentResults.filter((result) => !result.ok && result.error.code === 'P0001').length, 2);
+    pass('concurrent submissions are serialized by the database rate-limit lock');
+  } finally {
+    await Promise.all(concurrentClients.map((concurrentClient) => concurrentClient.end().catch(() => {})));
+  }
+
   await expectReject(
     () => client.query('select client_ip from private.article_comment_rate_limits limit 1'),
     'rate-limit records are not readable by anonymous clients',
@@ -163,6 +195,7 @@ try {
   await setPrincipal('anon', null, '203.0.113.40');
   const toApprove = await insertComment(publicArticle, 'Review Candidate', 'Please review this comment');
   const toDelete = await insertComment(publicArticle, 'Delete Candidate', 'This pending comment will be deleted');
+  const toReject = await insertComment(publicArticle, 'Reject Candidate', 'This pending comment will be rejected');
 
   await setPrincipal('authenticated', editorId, '203.0.113.41');
   const pendingForEditor = await client.query('select id from public.article_comments where id = $1', [toApprove.rows[0].id]);
@@ -175,6 +208,14 @@ try {
   assert.equal(approved.rows[0].moderated_by, editorId);
   assert.ok(new Date(approved.rows[0].moderated_at).getUTCFullYear() >= 2026);
   pass('editor approval overwrites client-supplied moderator ID and timestamp');
+
+  const rejected = await client.query(
+    "update public.article_comments set status = 'rejected' returning status, moderated_by where id = $1",
+    [toReject.rows[0].id],
+  );
+  assert.equal(rejected.rows[0].status, 'rejected');
+  assert.equal(rejected.rows[0].moderated_by, editorId);
+  pass('editor can reject a pending comment and the database records the actor');
 
   await expectReject(
     () => client.query("update public.article_comments set status = 'rejected' where id = $1", [toApprove.rows[0].id]),
@@ -189,12 +230,23 @@ try {
   await setPrincipal('anon', null, '203.0.113.50');
   const approvedPublic = await client.query('select id from public.article_comments where id = $1', [toApprove.rows[0].id]);
   assert.equal(approvedPublic.rowCount, 1);
+  const rejectedPublic = await client.query('select id from public.article_comments where id = $1', [toReject.rows[0].id]);
+  assert.equal(rejectedPublic.rowCount, 0);
+  pass('rejected comments are not visible to public readers');
   await client.query('RESET ROLE');
   await client.query("update public.articles set status = 'draft' where id = $1", [publicArticle]);
   await setPrincipal('anon', null, '203.0.113.50');
   const hiddenAfterUnpublish = await client.query('select id from public.article_comments where id = $1', [toApprove.rows[0].id]);
   assert.equal(hiddenAfterUnpublish.rowCount, 0);
   pass('approved comments stop being public when their article is unpublished');
+
+  await setPrincipal('anon', null, '203.0.113.60');
+  await insertComment(cascadeArticle, 'Cascade Reader', 'This comment follows article deletion');
+  await client.query('RESET ROLE');
+  await client.query('delete from public.articles where id = $1', [cascadeArticle]);
+  const orphaned = await client.query('select id from public.article_comments where article_id = $1', [cascadeArticle]);
+  assert.equal(orphaned.rowCount, 0);
+  pass('deleting an article cascades its comments as defined by the migration');
 
   console.log('Article-comments schema/RLS tests completed successfully.');
 } finally {
