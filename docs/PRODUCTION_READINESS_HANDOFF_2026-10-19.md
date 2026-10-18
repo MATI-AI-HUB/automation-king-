@@ -116,7 +116,7 @@ This section records the work actually completed in this execution. “Blocked /
 - Reviewed the PR patch and source for `frontend/components/share-buttons.tsx`, `frontend/app/article/[slug]/page.tsx`, the four unit tests, and the CI runbook.
 - Both share-button placements in the article page receive `canonicalArticleUrl(a.slug)`.
 - The URL builder uses fixed HTTPS destinations for Facebook, X, WhatsApp and Telegram and URL-encodes title/URL values. The initial destination does not derive from `window.location` or the request Host.
-- Review caution: article metadata constructs canonical/Open Graph URLs separately from `canonicalArticleUrl`; test that both representations resolve to the same URL for Bengali/Unicode slugs in a real rendered response.
+- Latest static-source recheck: canonical metadata, Open Graph URL, JSON-LD `mainEntityOfPage`, and both share-button placements now call the same `canonicalArticleUrl` helper. The helper URL-encodes the slug. Still test the rendered output with Bengali/Unicode slugs in a real preview response.
 - No browser hydration, preview HTML, or actual social share dialog was tested.
 
 ### 2. Alternative test execution while CI quota is exhausted
