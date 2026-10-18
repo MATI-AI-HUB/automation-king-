@@ -860,3 +860,12 @@ This table is the full live ledger inventory. The repository file inventory and 
 - Repository-wide commit search found exactly two `Co-authored-by` trailers, both `monkeycode-ai <monkeycode-ai@chaitin.com>`, at SHAs `df30825579612232b78c01adb6dc92f255fd58d6` and `a157076b1c65be908fe9f3110e53c8b03896a8a4`.
 - Therefore the **new PR branch meets the requested email/no-co-author condition**, but the literal same condition is **not true of all historical main commits**. The historical exceptions are documented only; no rewrite, amend, rebase, or force-push was authorized or performed.
 - Branch-protection read returned HTTP 403 from the GitHub integration. Repository ruleset listing returned a plan restriction for this private repository. The policy requirement for signed commits could not be independently checked; the PR branch commits themselves are confirmed unsigned.
+
+## Final implementation correction — comments are now independent of related feed
+**Observation time:** 2026-10-18 21:48 UTC (2026-10-19 03:48 Bangladesh time)
+
+- Current PR #38 head is `1031f46c3bba8b6ff0c9db4f23923eae1d4b3802`, 35 commits ahead of `main`. The comment component is now rendered directly in `frontend/app/article/[slug]/page.tsx`, immediately before `RelatedArticles`; `RelatedArticles` no longer imports/renders comments and returns `null` when its own feed has no items. This removes the parent/child failure coupling and duplicate-render path identified during review.
+- Raw GitHub commit metadata was refreshed for all 35 branch commits: all author/committer logins are `MATI-AI-HUB`; all author/committer emails are `matiailearninghub@gmail.com`; no co-author trailers; all commits are unsigned. Historical main-history exceptions remain unchanged and documented above.
+- Latest current-head workflow run is [39169427334](https://github.com/MATI-AI-HUB/automation-king-/actions/runs/39169427334). All five jobs failed within about two seconds, with empty `runner_name`, zero steps, and no logs. Current-head tests remain **NOT RUN / BLOCKED**; this is not evidence that code tests failed or passed.
+- Fresh read-only Supabase query at `2026-10-18T21:48:36.079002Z`: `public.article_comments` remains absent; ledger has 58 rows and latest version `20261018175840`. No migration or database write was performed.
+- No new environment variable, secret, Vercel deployment, Supabase branch, or production change was made. Actual Supabase gateway `X-Forwarded-For` spoof resistance remains untested end-to-end because no isolated staging branch is available.
