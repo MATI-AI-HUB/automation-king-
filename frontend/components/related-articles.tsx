@@ -3,6 +3,7 @@ import Image from 'next/image';
 import { api } from '../lib/api';
 import { mockFeedItems, type FeedArticle } from '../lib/mockData';
 import { t, translateCategory, type Locale } from '../lib/i18n';
+import { ArticleComments } from './article-comments';
 
 const _bn = (s: string | number): string =>
   String(s).replace(/[0-9]/g, (d) => '০১২৩৪৫৬৭৮৯'[+d]);
@@ -36,7 +37,7 @@ export async function RelatedArticles({
   );
   const related = [...sameCategory, ...others].slice(0, 4);
 
-  if (related.length === 0) return null;
+  if (related.length === 0) return <ArticleComments articleSlug={currentSlug} locale={locale} />;
 
   const displayTitle = (a: FeedArticle) =>
     locale === 'en' ? (a.title_en || a.title_bn) : a.title_bn;
@@ -48,6 +49,8 @@ export async function RelatedArticles({
   };
 
   return (
+    <>
+    <ArticleComments articleSlug={currentSlug} locale={locale} />
     <section
       aria-label={t(locale, 'more_news')}
       className="mt-12 border-t border-border pt-8"
@@ -105,5 +108,6 @@ export async function RelatedArticles({
         ))}
       </div>
     </section>
+    </>
   );
 }
