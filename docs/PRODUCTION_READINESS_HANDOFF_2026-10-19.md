@@ -824,3 +824,29 @@ This table is the full live ledger inventory. The repository file inventory and 
 - **VERIFIED:** current Vercel production alias/deployment SHA and existing public Supabase browser configuration presence.
 - **NOT RUN / BLOCKED:** all current-head CI checks, migration replay, role-based RLS tests, and end-to-end regression.
 - **NOT APPLIED:** production migration, production app deployment, or any live database/configuration change.
+
+## Final verification refresh — current PR head and raw Git metadata
+**Observation time:** 2026-10-18 21:45 UTC (2026-10-19 03:45 Bangladesh time)
+
+### Current branch and commit identity
+- Current PR #38 head: `075a6c74a175b697ff1e04b5928165557d8f6726`; base/main: `d3cb0c9a4bfcfd2557250d8c6498a8236377b9ae`; 33 commits ahead of main.
+- The raw GitHub REST commit objects were read for the 33 commits on the PR branch. All 33 have author login `MATI-AI-HUB`, committer login `MATI-AI-HUB`, author email `matiailearninghub@gmail.com`, and committer email `matiailearninghub@gmail.com`. No commit message in the branch contains a `Co-authored-by` trailer.
+- GitHub reports all 33 commits as `verified=false`, reason `unsigned`; therefore email/account association is verified, but cryptographic commit signatures are absent. Branch protection could not be read (HTTP 403, integration permission); ruleset listing reports GitHub Pro/public-repository restriction for this private repository, so any signature-enforcement policy remains unverified.
+- Exact historical main-history co-author SHAs were rechecked from raw GitHub commit metadata: `df30825579612232b78c01adb6dc92f255fd58d6` and `a157076b1c65be908fe9f3110e53c8b03896a8a4`. Both contain `Co-authored-by: monkeycode-ai <monkeycode-ai@chaitin.com>`. A co-author trailer is attribution, not proof of account compromise. No historical commit was rewritten, amended, rebased, or force-pushed.
+
+### Current CI status
+- Latest-head run: [39169118024](https://github.com/MATI-AI-HUB/automation-king-/actions/runs/39169118024), head `075a6c74a175b697ff1e04b5928165557d8f6726`. It completed as failure in about three seconds; all five jobs report empty step lists. Step/log queries provide no logs. Earlier runs and one rerun show the same pre-step failure pattern.
+- Current-head typecheck, lint, build, unit tests, schema replay, RLS tests, concurrency tests, and article/publishing regressions are **NOT RUN / BLOCKED**, not passed. Available evidence does not distinguish runner/billing/permission failure from another GitHub Actions service issue.
+
+### Fresh migration and production boundary
+- Main migration inventory was refreshed through GitHub's contents API at main SHA `d3cb0c9a4bfcfd2557250d8c6498a8236377b9ae`: 56 repository SQL files. Read-only live ledger query returned 58 rows; 47 exact version matches. Latest repository migration version is `20261017053000`; latest live ledger version is `20261018175840`. Proposed `20261018212000_article_comments.sql` sorts after both. Prior mismatches remain unresolved; no repair was performed.
+- A fresh read-only Supabase query at `2026-10-18T21:44:19.486411Z` returned `to_regclass('public.article_comments') = NULL`; migration remains unapplied.
+- Vercel production alias/deployment SHA remains verified from the preceding section: deployment `dpl_4fE7EQeZdKKcxXtNe9o3UNbuCt86`, `READY`, aliases include apex and www, SHA `d3cb0c9a4bfcfd2557250d8c6498a8236377b9ae`.
+- The proposed database rate-limit trigger uses Supabase's documented PostgREST request-header pattern. Actual project-gateway resistance to a client-supplied `X-Forwarded-For` still needs an end-to-end isolated-staging test. No isolated Supabase staging branch exists in the available listing; no paid branch/resource was created.
+- No new environment variable is needed for the current design. Existing public Supabase URL/anon-key variable presence was checked by name only; values were not decrypted or copied.
+
+### Status summary
+- **VERIFIED:** 33 branch commit author/committer emails and logins; no co-author trailers on this branch; production Vercel serving SHA; fresh main/ledger inventory and absence of the proposed live table.
+- **IMPLEMENTED / PROPOSED:** comment UI, direct Supabase submission, RLS/column grants, database rate-limit and moderation triggers, editorial moderation queue, PostgreSQL 17 test job.
+- **NOT RUN / BLOCKED:** current-head CI tests and end-to-end Supabase gateway IP-header spoof test.
+- **NOT APPLIED:** production migration, app deployment, Vault/secret change, grant/policy change, Auth setting, scheduler, queue, or any production write.
