@@ -179,7 +179,7 @@ try {
   }
 
   await expectReject(
-    () => client.query('select client_ip from private.article_comment_rate_limits limit 1'),
+    () => client.query('select client_key from private.article_comment_rate_limits limit 1'),
     'rate-limit records are not readable by anonymous clients',
     '42501',
   );
