@@ -869,3 +869,12 @@ This table is the full live ledger inventory. The repository file inventory and 
 - Latest current-head workflow run is [39169427334](https://github.com/MATI-AI-HUB/automation-king-/actions/runs/39169427334). All five jobs failed within about two seconds, with empty `runner_name`, zero steps, and no logs. Current-head tests remain **NOT RUN / BLOCKED**; this is not evidence that code tests failed or passed.
 - Fresh read-only Supabase query at `2026-10-18T21:48:36.079002Z`: `public.article_comments` remains absent; ledger has 58 rows and latest version `20261018175840`. No migration or database write was performed.
 - No new environment variable, secret, Vercel deployment, Supabase branch, or production change was made. Actual Supabase gateway `X-Forwarded-For` spoof resistance remains untested end-to-end because no isolated staging branch is available.
+
+## Privacy follow-up — rate-limit key pseudonymization
+**Observation time:** 2026-10-18 21:50 UTC (2026-10-19 03:50 Bangladesh time)
+
+- The proposed migration no longer persists the raw client IP. It parses the request IP from Supabase PostgREST request headers, derives a deterministic 64-bit pseudonymous key, and stores only that key plus the occurrence timestamp in the private rate-limit table. The key is used for the per-IP advisory lock and 3-per-10-minute count. This is pseudonymization, not a cryptographic identity token.
+- The disposable PostgreSQL schema test now asserts the table has `client_key bigint` and no `client_ip` column, in addition to direct-insert and concurrent-request limit tests.
+- Current PR #38 head: `7df1fe030479bdce7d39db074dfbb7e7201a612b`, 38 commits ahead of main. Raw commit API refresh: all 38 author/committer logins `MATI-AI-HUB`, all author/committer emails `matiailearninghub@gmail.com`, no co-author trailers, all unsigned.
+- Latest observed Actions run [39169600513](https://github.com/MATI-AI-HUB/automation-king-/actions/runs/39169600513) is on prior head `fcc11135f8e903b743577cf96ff7548f85de874a` and failed before any steps. The new current head's workflow result is pending/has not yet been returned by the current run lookup. No tests are claimed passed.
+- Production remains unchanged; the latest live read-only query at `2026-10-18T21:48:36.079002Z` found no `public.article_comments` table and 58 migration-ledger rows with latest version `20261018175840`. No new environment variable, secret, staging resource, or deployment was created.
