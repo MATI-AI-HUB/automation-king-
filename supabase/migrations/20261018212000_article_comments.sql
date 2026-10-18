@@ -155,7 +155,15 @@ create policy article_comments_read_approved
   on public.article_comments
   for select
   to anon, authenticated
-  using (status = 'approved');
+  using (
+    status = 'approved'
+    and exists (
+      select 1
+      from public.articles as a
+      where a.id = article_comments.article_id
+        and a.status = 'published'
+    )
+  );
 
 create policy article_comments_editor_read_all
   on public.article_comments
