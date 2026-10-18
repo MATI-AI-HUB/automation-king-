@@ -248,3 +248,37 @@ Please authorize/provide these items through approved account/runner setup (not 
 | E. Leakage/smoke test | ⛔ BLOCKED | No verified preview/test fixtures/accounts |
 
 No deployment, merge, live database mutation, secret rotation, cron change, APK signing, release upload/publication, social post, newsletter send or payment activation occurred in this follow-up.
+
+
+## Access follow-up — Vercel connector scope check (2026-10-19)
+
+**Status: ⛔ BLOCKED by Vercel authorization scope; no preview build was attempted.**
+
+Read-only Vercel connector checks performed after the owner reported that Vercel access was prepared:
+- `list_teams(limit=50)` returned `teams: []`.
+- `list_projects(search="banglarvoice", limit=50)` returned one project record: `automation-king-lcb2`, project ID `prj_552hrMTjvldSlUHpcuqNqqNbhshb`, account ID `team_ePmukwxucleK8YT0jr1edKhL`.
+- A subsequent read-only `GET /v9/projects/{idOrName}` attempt returned HTTP **403 forbidden**: `Not authorized: Trying to access resource under scope "matiailearninghub-3927". You must re-authenticate to this scope or use a token with access to this scope.`
+- The connector returned request ID `sin1:sfo1::n6wrw-1792356056064-595561edf319` for the first 403. A scoped retry using slug `matiailearninghub-3927` also returned 403 (request ID `sin1:sfo1::t8sks-1792356061483-5378f464d7e4`).
+- Because project details were forbidden, no deployment list, production deployment SHA, preview URL, or deployment HTML was retrieved. The available tool did not provide a working CLI fallback in this session.
+- No preview deployment/build was triggered because the owner explicitly withheld preview-build approval.
+
+**Required remediation:** reconnect/re-authorize the Vercel connection for the exact scope `matiailearninghub-3927` with read-only access to the Banglar Voice project/deployments, or configure a least-privileged Vercel token in the approved runner secret store. Do not paste the token into chat. Then retry read-only project/deployment lookup only. Creating a preview still requires separate explicit approval.
+
+**Supabase:** the owner-reported `SUPABASE_READONLY_DATABASE_URL` has not been configured in a runner accessible to this agent; no database connection/query was made. Supabase integration is not yet connected in this session. Continue to wait for the owner to connect it or configure the read-only URL in the approved runner secret store.
+
+**GitHub Codespace:** owner said they will prepare it; no Codespace URL/session was provided. The actual project command suite remains unrun. No secret values were requested or printed.
+
+### Current access gate
+
+| Resource | Observed evidence | Status |
+|---|---|---|
+| GitHub repo/PR read access | PR #36 and #37 metadata/source readable through GitHub connector | Available for static review |
+| GitHub Codespace | No session URL or runner execution channel | ⛔ Wait for owner |
+| Vercel project list | One candidate project returned | Partial read access |
+| Vercel project/deployment details | HTTP 403 under scope `matiailearninghub-3927` | ⛔ Re-authorize exact scope |
+| Supabase read-only database | No configured URL/session or query output | ⛔ Wait for owner |
+| Preview build/deployment | Explicitly not approved by owner | ⛔ Do not run |
+| Draft Release upload | Explicitly not authorized by owner | ⛔ Do not run |
+| Leakage fixtures/accounts | Not ready per owner | ⛔ Do not run |
+
+No deployment, build, database query/mutation, merge, APK signing, release upload/publication, secret rotation, scheduler change, or production action occurred in this follow-up.
