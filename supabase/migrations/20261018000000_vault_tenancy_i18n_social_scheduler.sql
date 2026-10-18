@@ -26,19 +26,28 @@ create schema if not exists internal;
 revoke all on schema internal from public, anon, authenticated;
 grant usage on schema internal to service_role;
 
--- Resolves a secret by logical service name. Looks at the api_vault pointer
+-- Resolves ONLY the allow-listed secrets the scheduler/archiver need, so this
+-- is not a general decrypt-by-name endpoint. Looks at the api_vault pointer
 -- table first (production convention), then at a raw vault secret name.
+-- Add a name to the allow-list in a reviewed migration before using it.
 create or replace function internal.get_decrypted_secret(p_secret_name text)
 returns text
 language plpgsql
 stable
 security definer
-set search_path = public, vault, pg_temp
+set search_path = ''
 as $$
 declare
   v_secret text;
 begin
-  if p_secret_name is null or length(p_secret_name) = 0 or length(p_secret_name) > 128 then
+  if p_secret_name is null
+     or p_secret_name <> all (array[
+       'CRON_SECRET',
+       'SUPABASE_URL',
+       'SOCIAL_FACEBOOK_PAGE_ID',
+       'SOCIAL_FACEBOOK_PAGE_TOKEN',
+       'GITHUB_DISPATCH_TOKEN'
+     ]) then
     return null;
   end if;
 
@@ -73,7 +82,7 @@ returns text
 language sql
 stable
 security definer
-set search_path = public, internal, pg_temp
+set search_path = ''
 as $$
   select internal.get_decrypted_secret(p_secret_name);
 $$;
@@ -83,11 +92,10 @@ grant execute on function public.get_decrypted_secret(text) to service_role;
 
 -- ---------------------------------------------------------------------------
 -- 2. SECURITY DEFINER sweep
---    * functions with no search_path get `public, pg_temp`
---    * functions whose search_path lacks pg_temp get it appended (pg_temp must
---      be last so temp objects can never shadow real ones)
---    * PUBLIC/anon EXECUTE is revoked unless the function is referenced by an
---      RLS policy (anon reads evaluate those helpers) — those are only logged.
+--    AUDIT ONLY. Existing functions (RPCs, triggers) are not altered or
+--    revoked here: blanket search_path rewrites / grants can change behavior.
+--    Findings are written to maintenance.security_hardening_report so
+--    EXECUTE can be revoked per function after callers are confirmed.
 -- ---------------------------------------------------------------------------
 do $$
 declare
@@ -122,32 +130,31 @@ begin
     end loop;
 
     if current_path is null then
-      execute format('alter function public.%I(%s) set search_path = public, pg_temp', r.proname, r.args);
       fixed := fixed + 1;
-    elsif current_path not like '%pg_temp%' and current_path <> '""' and current_path <> '' then
-      execute format('alter function public.%I(%s) set search_path = %s, pg_temp', r.proname, r.args, current_path);
-      fixed := fixed + 1;
-    end if;
-
-    if policy_text ~* ('(^|[^A-Za-z0-9_])' || r.proname || '\s*\(') then
-      kept := kept + 1;
       insert into maintenance.security_hardening_report (task, item, action, detail)
-      values ('SWEEP', 'public.' || r.proname || '(' || r.args || ')', 'execute kept', 'referenced by an RLS policy');
-      continue;
+      values ('SWEEP', 'public.' || r.proname || '(' || r.args || ')', 'review search_path',
+              'no search_path set; prefer search_path = '''' with schema-qualified names');
     end if;
 
-    authenticated_had := has_function_privilege('authenticated', r.oid, 'EXECUTE');
-    execute format('revoke execute on function public.%I(%s) from public, anon', r.proname, r.args);
-    execute format('grant execute on function public.%I(%s) to service_role', r.proname, r.args);
-    if authenticated_had then
-      execute format('grant execute on function public.%I(%s) to authenticated', r.proname, r.args);
+    if has_function_privilege('anon', r.oid, 'EXECUTE') then
+      if policy_text ~* ('(^|[^A-Za-z0-9_])' || r.proname || '\s*\(') then
+        kept := kept + 1;
+        insert into maintenance.security_hardening_report (task, item, action, detail)
+        values ('SWEEP', 'public.' || r.proname || '(' || r.args || ')', 'anon execute kept',
+                'referenced by an RLS policy');
+      else
+        revoked := revoked + 1;
+        insert into maintenance.security_hardening_report (task, item, action, detail)
+        values ('SWEEP', 'public.' || r.proname || '(' || r.args || ')', 'review anon execute',
+                'anon/PUBLIC can execute; revoke per function once callers are confirmed');
+      end if;
     end if;
-    revoked := revoked + 1;
   end loop;
 
   insert into maintenance.security_hardening_report (task, item, action, detail)
-  values ('SWEEP', 'public security definer functions', 'summary',
-          format('search_path fixed=%s, anon/PUBLIC execute revoked=%s, kept for RLS=%s', fixed, revoked, kept));
+  values ('SWEEP', 'public security definer functions', 'audit summary',
+          format('missing search_path=%s, anon-executable to review=%s, anon-executable kept for RLS=%s (no function was altered)',
+                 fixed, revoked, kept));
 end $$;
 
 -- Tables with RLS enabled and zero policies are deny-by-default. Make that
@@ -207,7 +214,7 @@ returns uuid[]
 language sql
 stable
 security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
   select coalesce(array_agg(m.org_id), '{}'::uuid[])
     from public.organization_members m
@@ -219,7 +226,7 @@ returns boolean
 language sql
 stable
 security definer
-set search_path = public, pg_temp
+set search_path = ''
 as $$
   select exists (
     select 1
@@ -262,8 +269,13 @@ grant select, update on public.organizations to authenticated;
 grant select, insert, update, delete on public.organization_members to authenticated;
 grant all on public.organizations, public.organization_members to service_role;
 
--- tenant_id on core tables. Nullable with a constant default: new rows land in
--- the primary tenant, existing rows are backfilled in batches (see below).
+-- tenant_id on newsroom/social tables. Nullable with a constant default: new
+-- rows land in the initial "Banglar Voice" tenant and existing rows are
+-- backfilled to it in batches (see below). news_sources / source_registry stay
+-- shared across organizations, and user-level subscriptions are untouched.
+-- Tenant policies are ADDITIVE (permissive policies are OR-ed), so existing
+-- public/anon access to published content and current publishing paths keep
+-- working until the old policies are deliberately tightened.
 do $$
 declare
   t text;
@@ -271,7 +283,7 @@ declare
 begin
   foreach t in array array[
     'articles', 'videos', 'epaper_editions', 'field_reports', 'live_sessions',
-    'news_sources', 'social_posts', 'social_content_calendar', 'breaking_ticker'
+    'social_posts', 'social_content_calendar', 'breaking_ticker'
   ] loop
     if to_regclass('public.' || t) is null then
       continue;
@@ -305,7 +317,7 @@ declare
 begin
   if p_table not in (
     'articles', 'videos', 'epaper_editions', 'field_reports', 'live_sessions',
-    'news_sources', 'social_posts', 'social_content_calendar', 'breaking_ticker'
+    'social_posts', 'social_content_calendar', 'breaking_ticker'
   ) or to_regclass('public.' || p_table) is null then
     raise exception 'table % is not tenant-scoped', p_table;
   end if;
