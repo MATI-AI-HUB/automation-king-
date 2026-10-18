@@ -54,13 +54,16 @@ function Player({ video }: { video?: VideoItem }) {
   // Prefer the privacy-enhanced nocookie domain for real YouTube IDs; only
   // fall back to a stored embed_url (e.g. Facebook/Vimeo) when we have no ID.
   const src = video.youtube_id
-    ? `https://www.youtube-nocookie.com/embed/${video.youtube_id}?autoplay=1&rel=0`
+    ? `https://www.youtube-nocookie.com/embed/${encodeURIComponent(video.youtube_id)}?autoplay=1&rel=0&modestbranding=1&playsinline=1`
     : video.embed_url || null;
+  const poster =
+    video.thumbnail_url ||
+    (video.youtube_id ? `https://i.ytimg.com/vi/${encodeURIComponent(video.youtube_id)}/hqdefault.jpg` : undefined);
 
   if (!src) {
     return (
       <div className="relative overflow-hidden rounded-2xl border border-white/10">
-        <Thumb src={video.thumbnail_url} alt={video.title_bn || 'ভিডিও'} />
+        <Thumb src={poster} alt={video.title_bn || 'ভিডিও'} />
       </div>
     );
   }
@@ -73,7 +76,7 @@ function Player({ video }: { video?: VideoItem }) {
         aria-label={video.title_bn ? `${video.title_bn} — ভিডিও চালান` : 'ভিডিও চালান'}
         className="group relative block aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-black"
       >
-        <Thumb src={video.thumbnail_url} alt={video.title_bn || 'ভিডিও'} />
+        <Thumb src={poster} alt={video.title_bn || 'ভিডিও'} />
         <span className="absolute inset-0 grid place-items-center bg-black/20 transition-colors group-hover:bg-black/40">
           <span className="grid h-16 w-16 place-items-center rounded-full bg-black/60 text-white shadow-lg ring-2 ring-white/70 transition-transform group-hover:scale-110 group-hover:bg-[#CC0000]">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden>

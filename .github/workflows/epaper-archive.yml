@@ -1,0 +1,40 @@
+name: E-paper PDF archive
+on:
+  repository_dispatch:
+    types: [epaper-archive]
+  workflow_dispatch:
+    inputs:
+      edition_date:
+        description: Edition date (YYYY-MM-DD, Asia/Dhaka). Defaults to today.
+        required: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: epaper-archive
+  cancel-in-progress: false
+
+jobs:
+  archive:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: '20' }
+      - name: Install renderer
+        run: |
+          mkdir -p /tmp/renderer && cd /tmp/renderer
+          npm init -y >/dev/null
+          npm install --no-audit --no-fund playwright@1 @supabase/supabase-js@2
+          npx playwright install --with-deps chromium
+      - name: Render and upload PDF
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          SITE_URL: ${{ vars.SITE_URL }}
+          EDITION_DATE: ${{ github.event.inputs.edition_date }}
+        run: |
+          cp scripts/pipeline/epaper-archive.mjs /tmp/renderer/
+          cd /tmp/renderer && node epaper-archive.mjs
