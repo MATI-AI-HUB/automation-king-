@@ -282,3 +282,12 @@ Read-only Vercel connector checks performed after the owner reported that Vercel
 | Leakage fixtures/accounts | Not ready per owner | ⛔ Do not run |
 
 No deployment, build, database query/mutation, merge, APK signing, release upload/publication, secret rotation, scheduler change, or production action occurred in this follow-up.
+
+
+## Repeated owner status / read-only retry — 2026-10-19
+
+The owner repeated the same access status. No new Codespace session URL or Supabase connection was included, so those gates remain closed.
+
+A read-only Vercel deployment-list retry was made against the already identified project `prj_552hrMTjvldSlUHpcuqNqqNbhshb` and team `team_ePmukwxucleK8YT0jr1edKhL`, with `target=production` and `limit=10`. It returned HTTP **403 forbidden**, scope `matiailearninghub-3927`, request ID `sin1:sfo1::xbq49-1792356149548-7ccebf5c71a7`. Therefore the production deployment SHA remains **NOT VERIFIED**. No deployment/build was triggered.
+
+Next required input is not another status repetition: open/provide the authorized Codespace execution session, reauthorize the Vercel connection for the exact scope `matiailearninghub-3927`, and configure `SUPABASE_READONLY_DATABASE_URL` inside the approved runner secret store. No secret should be pasted into chat. Preview build remains unapproved, Draft Release upload remains unauthorized, and fixtures/test accounts remain unavailable. No external side effects occurred.
