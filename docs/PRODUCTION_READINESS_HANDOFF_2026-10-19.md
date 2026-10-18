@@ -783,3 +783,44 @@ This table is the full live ledger inventory. The repository file inventory and 
 - Vercel read-only project/deployment access remains blocked by HTTP 403 for scope `matiailearninghub-3927`; production-serving SHA remains **UNVERIFIED**.
 - Aggregate-only live article metadata query at `2026-10-18T21:25:58.358489Z` showed 589 `published`, 821 `pending`, and 10 `draft` articles; the newest `published_at` was `2026-10-18T21:15:19.160Z`. This is evidence of recent database publishing activity, not a full website, cron, or end-to-end publishing health test.
 - No production SQL, migration, grant/policy change, environment variable, merge, or deployment was performed. Comment feature is implemented in the draft PR only; the existing news publishing path remains unchanged by this work.
+
+## Fresh follow-up: PR #38 security corrections, CI state, and Vercel scope resolution
+**Observation time:** 2026-10-18 21:41 UTC (2026-10-19 03:41 Bangladesh time)
+
+### Current implementation state
+- PR #38 remains Draft/open and separate from this documentation-only PR: https://github.com/MATI-AI-HUB/automation-king-/pull/38
+- Current reviewed implementation head: `7970f5dde7f88c1cec5f0de4e8910c28bb6fa203`. Current main/base SHA remains `d3cb0c9a4bfcfd2557250d8c6498a8236377b9ae`.
+- The public comment POST route and Upstash-only rate-limit module were removed from the proposal. The browser now submits using the existing publishable/anon Supabase client; the database owns the write boundary.
+- The proposed migration adds column-scoped grants, public comment-read checks tied to parent article visibility, an atomic per-IP rate-limit trigger (3 submissions per 10 minutes, serialized by transaction advisory lock), fail-closed behavior if the gateway IP header is unavailable, and a trigger that owns moderation actor/timestamp and allows only pending-to-approved/rejected transitions.
+- Admin moderation now confirms that a pending row was actually changed; the queue supports deletion of pending comments.
+- Added a disposable PostgreSQL 17 CI job and schema/RLS script covering anonymous and authenticated roles, premium entitlement, direct-insert bypass, concurrent rate limiting, moderator metadata spoofing, rejection visibility, article unpublish, and article-delete cascade. **Test source is not test evidence.**
+
+### CI evidence
+- GitHub Actions run [39168758906](https://github.com/MATI-AI-HUB/automation-king-/actions/runs/39168758906) was created for an earlier branch head. All five jobs (worker, frontend, secret scan, Gitleaks, and the new PostgreSQL schema job) were observed as failed with zero reported steps. Job-step queries returned empty step lists; log downloads returned 404 `BlobNotFound`. A rerun of failed jobs showed the same no-step pattern.
+- Latest head `7970f5dde7f88c1cec5f0de4e8910c28bb6fa203` returned no commit statuses and no PR-triggered workflow run in the current integration lookup.
+- Therefore current-head typecheck, lint, build, unit tests, schema replay, RLS tests, and concurrency tests are **NOT RUN / BLOCKED**, not passed. The available evidence does not establish whether the failure is runner availability, workflow permissions, or another GitHub Actions service issue; no logs were available to diagnose the cause.
+- Local test execution is unavailable in this runtime: no repository checkout/network access, Docker, or Supabase CLI. No live/production write test was attempted.
+
+### Fresh Vercel read-only verification — supersedes the earlier 403 note
+- The Vercel authenticated user is `matiailearninghub@gmail.com`, username `matiailearninghub-3927`, plan `hobby`. The team listing returned no Teams. The earlier 403 came from explicitly supplying the personal-account scope as `teamId`; using the default personal-account scope worked.
+- Project `automation-king-lcb2`, project ID `prj_552hrMTjvldSlUHpcuqNqqNbhshb`.
+- Production deployment `dpl_4fE7EQeZdKKcxXtNe9o3UNbuCt86` is `READY`, created `2026-10-17T00:54:44.329Z`. Its alias list includes `www.banglarvoice24news.com` and `banglarvoice24news.com`; the apex alias redirects to `www`.
+- Production-serving Git SHA is **VERIFIED** as `d3cb0c9a4bfcfd2557250d8c6498a8236377b9ae` on `main`. No deployment was created, promoted, canceled, or changed.
+- Environment-variable presence was checked by name only, with decryption disabled. Existing `NEXT_PUBLIC_SUPABASE_URL` and `NEXT_PUBLIC_SUPABASE_ANON_KEY` are configured for production and preview. No new environment variable or secret is needed by the current database-trigger design; no values were decrypted, copied, or printed.
+
+### Supabase / migration boundary
+- Read-only query at `2026-10-18T21:33:43.046757Z` returned `to_regclass('public.article_comments') = NULL`. The proposed migration remains unapplied to production.
+- Latest observed live migration-ledger version is `20261018175840`; proposed `20261018212000_article_comments.sql` sorts after that observed version. The existing migration mismatches recorded earlier remain unresolved and are not repaired by this feature.
+- Supabase branch listing returned only the existing `main` branch with status `MIGRATIONS_FAILED`; no isolated staging branch was available. No paid branch/resource was created.
+- No production SQL/migration, grants/policies, Vault secret, Auth configuration, scheduler, queue, or environment variable was changed.
+
+### Commit identity limits
+- GitHub authenticated login remains `MATI-AI-HUB`, matching repository ownership and `.github/CODEOWNERS`; no new `Co-authored-by` trailer was added.
+- The Vercel account email matches `matiailearninghub@gmail.com`, but that does **not** independently prove the GitHub raw author/committer email. The GitHub connector returns raw email as null/unavailable, and this runtime cannot reach GitHub for a read-only clone/raw Git inspection. Exact GitHub author/committer email and signature verification remain **UNVERIFIED**.
+- Historical co-author trailers were not rewritten. No rebase, amend, history rewrite, or force-push was performed.
+
+### Release status
+- **IMPLEMENTED (proposal):** comments UI, direct Supabase submission, RLS/trigger controls, editorial moderation, PostgreSQL 17 test job.
+- **VERIFIED:** current Vercel production alias/deployment SHA and existing public Supabase browser configuration presence.
+- **NOT RUN / BLOCKED:** all current-head CI checks, migration replay, role-based RLS tests, and end-to-end regression.
+- **NOT APPLIED:** production migration, production app deployment, or any live database/configuration change.
