@@ -1,6 +1,6 @@
 'use client';
 
-import { FormEvent, useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, type FormEvent } from 'react';
 import { ARTICLE_COMMENT_BODY_MAX, ARTICLE_COMMENT_NAME_MAX } from '@/lib/article-comments';
 
 type CommentItem = {
@@ -26,6 +26,7 @@ export function ArticleComments({ articleSlug, locale }: Props) {
   const [notice, setNotice] = useState('');
 
   const bn = locale !== 'en';
+  const unavailableMessage = bn ? 'এই মুহূর্তে মন্তব্য লোড করা যাচ্ছে না। পরে আবার চেষ্টা করুন।' : 'Comments are temporarily unavailable. Please try again later.';
   const copy = {
     title: bn ? 'পাঠকের মন্তব্য' : 'Reader comments',
     intro: bn ? 'আপনার মতামত লিখুন। প্রকাশের আগে মন্তব্যটি সম্পাদকীয় পর্যালোচনার জন্য অপেক্ষা করবে।' : 'Share your view. Comments are reviewed by the editorial team before publication.',
@@ -34,7 +35,7 @@ export function ArticleComments({ articleSlug, locale }: Props) {
     submit: bn ? 'মন্তব্য জমা দিন' : 'Submit comment',
     pending: bn ? 'ধন্যবাদ। আপনার মন্তব্যটি পর্যালোচনার জন্য জমা হয়েছে। অনুমোদনের পর এটি দেখা যাবে।' : 'Thank you. Your comment is queued for review and will appear after approval.',
     empty: bn ? 'এখনো কোনো অনুমোদিত মন্তব্য নেই। প্রথম মন্তব্যটি আপনিই করতে পারেন।' : 'No approved comments yet. You can be the first to comment.',
-    unavailable: bn ? 'এই মুহূর্তে মন্তব্য লোড করা যাচ্ছে না। পরে আবার চেষ্টা করুন।' : 'Comments are temporarily unavailable. Please try again later.',
+    unavailable: unavailableMessage,
     invalid: bn ? 'নাম ও মন্তব্যের ঘর ঠিকভাবে পূরণ করুন।' : 'Please check your name and comment.',
     sending: bn ? 'জমা হচ্ছে…' : 'Submitting…',
     failed: bn ? 'মন্তব্য জমা হয়নি। একটু পরে আবার চেষ্টা করুন।' : 'Comment was not submitted. Please try again shortly.',
@@ -49,11 +50,11 @@ export function ArticleComments({ articleSlug, locale }: Props) {
       setComments(result.comments as CommentItem[]);
       setError('');
     } catch {
-      setError(copy.unavailable);
+      setError(unavailableMessage);
     } finally {
       setLoading(false);
     }
-  }, [articleSlug, copy.unavailable]);
+  }, [articleSlug, unavailableMessage]);
 
   useEffect(() => {
     void loadComments();
