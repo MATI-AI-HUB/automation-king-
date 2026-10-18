@@ -25,7 +25,7 @@ export async function RelatedArticles({
     feed = [];
   }
   if (feed.length === 0) {
-    if (process.env.NODE_ENV === 'production') return null;
+    if (process.env.NODE_ENV === 'production') return <ArticleComments articleSlug={currentSlug} locale={locale} />;
     feed = mockFeedItems;
   }
 
