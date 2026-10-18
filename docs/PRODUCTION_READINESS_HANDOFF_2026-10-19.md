@@ -701,3 +701,71 @@ Views `public_article_detail` and `public_articles_feed` are marked `security_in
 - **P2:** move `newsroom_submit_for_verification` to empty search_path with fully qualified references; review authenticated SECURITY DEFINER RPC allowlist; remove unnecessary anon SELECT on `notifications`/`reading_history`; tighten trigger-function EXECUTE ACLs; verify public preview/view columns.
 - **P2 / owner approval:** enable leaked-password protection and test Auth behavior.
 - **Next-round prerequisites:** Vercel read-only scope authorization or `VERCEL_TOKEN` in runner secret store; an accessible Node 22 GitHub Codespace to run `npm ci`, TypeScript, lint, build and Vitest; no production writes. No migration, grant/policy changes, deployment or release upload were performed in this round.
+
+
+## Appendix — complete live migration ledger (all 58 rows)
+
+Read-only query: `SELECT version, name, cardinality(statements) AS statement_count, octet_length(array_to_string(statements, E'\\n')) AS stored_sql_bytes FROM supabase_migrations.schema_migrations ORDER BY version;`
+
+| Ledger version | Ledger name | Stored statement count | Stored SQL bytes (joined statements) |
+|---|---|---:|---:|
+| `20260901000000` | `init_schema` | 78 | 22695 |
+| `20260901000001` | `storage` | 12 | 5541 |
+| `20260909` | `revenue_hooks` | 25 | 5553 |
+| `20260909000001` | `security` | 14 | 2902 |
+| `20260912` | `ai_audit_log` | 6 | 1222 |
+| `20260912000001` | `db_optimization` | 6 | 942 |
+| `20260920` | `source_registry` | 10 | 2910 |
+| `20260925` | `newsroom_automation` | 31 | 8156 |
+| `20260929` | `articles_rls_pgcron` | 10 | 1555 |
+| `20260929000001` | `platform_contract` | 31 | 6856 |
+| `20261001000000` | `grant_articles_access` | 3 | 893 |
+| `20261002000000` | `public_article_views` | 13 | 2368 |
+| `20261002120000` | `article_unique_indexes` | 7 | 2207 |
+| `20261005100000` | `atomic_news_pipeline_lock` | 7 | 2336 |
+| `20261005210000` | `source_expansion` | 3 | 1841 |
+| `20261005220000` | `public_feed_grant` | 4 | 305 |
+| `20261006070000` | `harden_pipeline_lock_rpc` | 6 | 693 |
+| `20261006090000` | `social_posts_audit` | 7 | 1379 |
+| `20261006101852` | `epaper_editions` | 7 | 835 |
+| `20261006101925` | `epaper_edition_pages` | 1 | 100 |
+| `20261006170000` | `epaper_editions` | 7 | 967 |
+| `20261006190000` | `quarantine_low_quality_articles` | 1 | 734 |
+| `20261006191500` | `brand_card_images` | 1 | 1046 |
+| `20261007000000` | `security_hardening_report` | 11 | 1216 |
+| `20261007000001` | `fix_search_path` | 5 | 4289 |
+| `20261007000002` | `consolidate_policies` | 5 | 3635 |
+| `20261007000003` | `move_extensions` | 10 | 4469 |
+| `20261008000000` | `ai_gateway` | 19 | 3913 |
+| `20261008000001` | `ai_gateway_enrollment` | 6 | 2344 |
+| `20261008185200` | `vault_backed_production_scheduler` | 11 | 3598 |
+| `20261008190500` | `article_image_rights_audit` | 6 | 543 |
+| `20261009022004` | `independent_gemini_fallback` | 6 | 1531 |
+| `20261009023526` | `newsroom_failed_retry_scheduler` | 3 | 1000 |
+| `20261009030000` | `source_health_observability` | 6 | 1450 |
+| `20261009030100` | `record_source_probe` | 3 | 1912 |
+| `20261009040000` | `world_class_sources_and_schedule` | 12 | 4488 |
+| `20261009150000` | `security_and_retry_scheduler` | 13 | 3756 |
+| `20261010000000` | `vault_wrappers` | 6 | 1805 |
+| `20261010010000` | `sync_unversioned_objects` | 140 | 53088 |
+| `20261011000001` | `add_slug_title` | 10 | 1306 |
+| `20261012000001` | `fix_data_quality` | 5 | 477 |
+| `20261012000003` | `fix_null_slugs` | 9 | 994 |
+| `20261012000004` | `fix_rls_anon` | 7 | 447 |
+| `20261012000005` | `fix_feed_columns_and_anon` | 10 | 1381 |
+| `20261012000010` | `premium_rls_and_ai_policy` | 4 | 299 |
+| `20261012000020` | `social_platform_registry` | 1 | 6641 |
+| `20261013034809` | `social_manager_tables` | 1 | 3409 |
+| `20261013041043` | `social_manager_schedule` | 1 | 2638 |
+| `20261015135836` | `social_platform_contract` | 1 | 258 |
+| `20261015144502` | `social_reconciliation_audit` | 1 | 1122 |
+| `20261015150835` | `epaper_cron_route` | 1 | 867 |
+| `20261015183528` | `epaper_cron_secret_alias` | 1 | 881 |
+| `20261015184837` | `youtube_inventory_contract` | 1 | 1162 |
+| `20261015184844` | `youtube_sync_schedule` | 1 | 834 |
+| `20261015194444` | `youtube_quarantine_contract` | 1 | 550 |
+| `20261016223348` | `social_youtube_vault_contract` | 1 | 1717 |
+| `20261016232622` | `social_vault_contract` | 1 | 2036 |
+| `20261018175840` | `epaper_archive_storage` | 1 | 625 |
+
+This table is the full live ledger inventory. The repository file inventory and full Git blob SHA values are in section 1 above. Stored statement counts/byte sizes are useful diff signals, but they are not cryptographic checksums; no checksum column is present in the live ledger.
