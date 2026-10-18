@@ -8,6 +8,7 @@ create table public.article_comments (
   display_name text not null check (
     display_name = btrim(display_name, E' \t\n\r')
     and char_length(display_name) between 2 and 60
+    and display_name ~ '[^[:space:]]'
     and display_name !~ '[[:cntrl:]]'
   ),
   body text not null check (
