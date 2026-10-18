@@ -14,6 +14,7 @@ create table public.article_comments (
   body text not null check (
     body = btrim(body, E' \t\n\r')
     and char_length(body) between 3 and 2000
+    and body ~ '[^[:space:]]'
     and translate(body, E'\n\t', '') !~ '[[:cntrl:]]'
   ),
   status text not null default 'pending' check (status in ('pending', 'approved', 'rejected')),
