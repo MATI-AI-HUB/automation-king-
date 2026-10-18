@@ -147,12 +147,12 @@ export async function generateMetadata({ params }: PageProps): Promise<Metadata>
   return {
     title: displayTitle,
     description: displayDek || a.seo_description,
-    alternates: { canonical: `${BASE}/article/${slug}` },
+    alternates: { canonical: canonicalArticleUrl(slug) },
     openGraph: {
       title: displayTitle,
       description: displayDek,
       type: 'article',
-      url: `${BASE}/article/${slug}`,
+      url: canonicalArticleUrl(slug),
       locale: locale === 'en' ? 'en_US' : 'bn_BD',
       publishedTime: a.published_at,
       authors: a.author_name ? [a.author_name] : undefined,
@@ -189,7 +189,7 @@ export default async function ArticlePage({ params }: PageProps) {
       name: 'বাংলার ভয়েস',
       logo: { '@type': 'ImageObject', url: `${BASE}/logo.png` },
     },
-    mainEntityOfPage: { '@type': 'WebPage', '@id': `${BASE}/article/${a.slug}` },
+    mainEntityOfPage: { '@type': 'WebPage', '@id': canonicalArticleUrl(a.slug) },
     image: a.featured_image || undefined,
   };
 
