@@ -4,7 +4,6 @@
 import { chromium } from 'playwright';
 import { createClient } from '@supabase/supabase-js';
 
-const siteUrl = (process.env.SITE_URL || 'https://www.banglarvoice24news.com').replace(/\/$/, '');
 const supabaseUrl = process.env.SUPABASE_URL || process.env.NEXT_PUBLIC_SUPABASE_URL;
 const serviceKey = process.env.SUPABASE_SERVICE_ROLE_KEY;
 if (!supabaseUrl || !serviceKey) {
@@ -13,6 +12,31 @@ if (!supabaseUrl || !serviceKey) {
 }
 
 const supabase = createClient(supabaseUrl, serviceKey, { auth: { persistSession: false } });
+
+// Secrets live in Supabase Vault (api_vault -> vault.secrets). Only the two
+// bootstrap credentials above come from the CI environment.
+async function vaultSecret(serviceName) {
+  const { data: row, error } = await supabase
+    .from('api_vault')
+    .select('key_encrypted')
+    .eq('service_name', serviceName)
+    .eq('environment', 'prod')
+    .eq('is_active', true)
+    .maybeSingle();
+  if (error) throw new Error(`Vault lookup failed for ${serviceName}: ${error.message}`);
+  if (!row?.key_encrypted) return null;
+  const { data: plain, error: decryptError } = await supabase.rpc('decrypt_vault_secret', {
+    p_secret_id: row.key_encrypted,
+  });
+  if (decryptError) throw new Error(`Vault decrypt failed for ${serviceName}: ${decryptError.message}`);
+  return plain || null;
+}
+
+const siteUrl = (
+  (await vaultSecret('SITE_URL')) ||
+  process.env.SITE_URL ||
+  'https://www.banglarvoice24news.com'
+).replace(/\/$/, '');
 const dhakaDate = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Dhaka' }).format(new Date());
 const editionDate = process.env.EDITION_DATE || dhakaDate;
 if (!/^\d{4}-\d{2}-\d{2}$/.test(editionDate)) {

@@ -33,7 +33,6 @@ jobs:
         env:
           SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
           SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
-          SITE_URL: ${{ vars.SITE_URL }}
           EDITION_DATE: ${{ github.event.inputs.edition_date }}
         run: |
           cp scripts/pipeline/epaper-archive.mjs /tmp/renderer/
