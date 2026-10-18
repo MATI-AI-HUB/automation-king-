@@ -16,7 +16,7 @@ export function normalizeArticleCommentInput(
     return null;
   }
 
-  const displayName = value.displayName.trim().replace(/\s+/g, ' ').slice(0, ARTICLE_COMMENT_NAME_MAX);
+  const displayName = value.displayName.trim().replace(/\s+/g, ' ');
   const body = value.body
     .replace(/\r\n?/g, '\n')
     .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F\u007F]/g, '')
