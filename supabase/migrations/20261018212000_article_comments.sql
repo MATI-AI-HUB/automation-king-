@@ -19,7 +19,7 @@ create index article_comments_article_status_created_idx
 alter table public.article_comments enable row level security;
 
 revoke all on table public.article_comments from anon, authenticated, public;
-grant select on table public.article_comments to anon, authenticated;
+grant select (id, article_id, display_name, body, status, created_at) on table public.article_comments to anon, authenticated;
 grant insert (article_id, display_name, body) on table public.article_comments to anon, authenticated;
 grant update (status, moderated_at, moderated_by) on table public.article_comments to authenticated;
 grant delete on table public.article_comments to authenticated;
