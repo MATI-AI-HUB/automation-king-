@@ -291,3 +291,45 @@ The owner repeated the same access status. No new Codespace session URL or Supab
 A read-only Vercel deployment-list retry was made against the already identified project `prj_552hrMTjvldSlUHpcuqNqqNbhshb` and team `team_ePmukwxucleK8YT0jr1edKhL`, with `target=production` and `limit=10`. It returned HTTP **403 forbidden**, scope `matiailearninghub-3927`, request ID `sin1:sfo1::xbq49-1792356149548-7ccebf5c71a7`. Therefore the production deployment SHA remains **NOT VERIFIED**. No deployment/build was triggered.
 
 Next required input is not another status repetition: open/provide the authorized Codespace execution session, reauthorize the Vercel connection for the exact scope `matiailearninghub-3927`, and configure `SUPABASE_READONLY_DATABASE_URL` inside the approved runner secret store. No secret should be pasted into chat. Preview build remains unapproved, Draft Release upload remains unauthorized, and fixtures/test accounts remain unavailable. No external side effects occurred.
+
+
+## Authorization retry in this chat environment — 2026-10-19
+
+The owner asked for one more authorization confirmation attempt. Read-only authorization checks were performed; no credentials were requested in chat and no write action was taken.
+
+### Vercel authentication identity
+
+- `GET /v2/user` via the Vercel connector succeeded.
+- Returned authenticated Vercel username: `matiailearninghub-3927`.
+- Returned default team ID: `team_ePmukwxucleK8YT0jr1edKhL`.
+- This confirms a Vercel account is connected to the chat's Vercel connector; it does **not** prove authorization for every project/resource.
+
+### Project/deployment scope
+
+- A read-only project listing scoped to `matiailearninghub-3927` failed with HTTP **403 forbidden**.
+- Error: `Not authorized: Trying to access resource under scope "matiailearninghub-3927". You must re-authenticate to this scope or use a token with access to this scope.`
+- Request ID: `sin1:sfo1::bbscn-1792356518673-8b95c3b3e1d9`.
+- This confirms the Vercel connector is authenticated, but its current credential/scope is not authorized to list project resources for the requested scope. No project/deployment details or production commit SHA were returned.
+- Do not repeat the same API call unchanged; the Vercel error explicitly advises re-authentication or a token with access to that scope.
+- No preview build was triggered because preview-build authorization is still withheld.
+
+### Supabase connector state
+
+- The available connected tool inventory contains no Supabase database actions in this chat environment.
+- Plugin directory lookup reports Supabase plugin ID `plugin_asdk_app_69d3e5ee6a708191baa733f7b8931995`, status available/enabled but `installed=false`. No active Supabase connection/session is available to run a read-only query from this agent.
+- The owner plans to configure `SUPABASE_READONLY_DATABASE_URL` in an authorized Codespace/runner secret store. No such runner session or connection was provided, and no database query was attempted.
+- Never paste the database URL/token into chat. Configure it only in the approved secret store, with a role restricted to read-only metadata/policy/grant/migration-ledger queries.
+
+### Current access verdict
+
+| Service | Verified in this chat | Still needed |
+|---|---|---|
+| Vercel account authentication | ✅ `GET /v2/user` succeeded; username and default team ID returned | Reauthorize connector/token for scope `matiailearninghub-3927` with read-only project/deployment access |
+| Vercel project/deployment access | ⛔ HTTP 403; no production SHA available | Owner reconnects/re-authorizes the Vercel app for the exact scope, then agent retries read-only lookup |
+| Supabase DB | ⛔ No active connector/tool or configured runner session | Connect the Supabase app or configure `SUPABASE_READONLY_DATABASE_URL` in the approved runner |
+| GitHub Codespace | ⛔ No session/terminal access supplied | Owner opens/provides the authorized Codespace execution channel |
+| Preview build | ⛔ Not authorized | Separate explicit approval remains required |
+| Draft Release upload | ⛔ Not authorized | Separate explicit approval remains required |
+| Non-production fixtures/test accounts | ⛔ Not ready | Safe fixtures and role-limited accounts required for leakage tests |
+
+No build, deployment, database query/mutation, merge, release upload/publication, signing, secret rotation, scheduler change, or production modification occurred during this authorization retry.
