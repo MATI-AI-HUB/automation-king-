@@ -170,3 +170,81 @@ This section records the work actually completed in this execution. “Blocked /
 | 5. Preview/security smoke | NOT RUN | Preview URL, test accounts/fixtures, raw-response and cache access |
 
 **Final safety state:** PR #36 and PR #37 remain Draft/open; neither was merged. No production deployment, database migration, secret rotation, cron/scheduler change, social post, newsletter send or payment activation occurred. This report does not authorize those actions.
+
+
+## Follow-up execution log — 2026-10-19
+
+This follow-up used GitHub repository read access and the available execution container. It stopped at the first external-access gate as requested; no external account token was guessed or added.
+
+### Step A — clean checkout and real Vitest
+
+**Status: ⛔ BLOCKED for clean checkout / project commands; static test-file verification completed.**
+
+Evidence:
+- Environment output: `node --version` → `v22.16.0`; `npm --version` → `10.9.2`; `git --version` → `2.47.3`.
+- Command: `git ls-remote https://github.com/MATI-AI-HUB/automation-king-.git refs/heads/fix/ssr-share-links`
+- Actual output: `fatal: unable to access 'https://github.com/MATI-AI-HUB/automation-king-.git/': Could not resolve host: github.com` (exit code 128).
+- GitHub read-only connector verified PR #36 is open/Draft and its source branch contains `frontend/__tests__/share-buttons.test.tsx` importing `buildShareUrl` from the real component and defining four Vitest tests. The previous standalone mirror tests are not a substitute for these tests.
+- Actual test file: https://github.com/MATI-AI-HUB/automation-king-/blob/fix/ssr-share-links/frontend/__tests__/share-buttons.test.tsx
+- Workflow commands are defined in https://github.com/MATI-AI-HUB/automation-king-/blob/main/.github/workflows/ci.yml.
+- `npm ci --legacy-peer-deps`, `npx tsc --noEmit`, `npm run lint`, `npm run build`, and `npx vitest run` were **not run** because a clean checkout could not be obtained. This step is not passed.
+- Required unblock: the owner must authorize a GitHub Codespace or self-hosted runner with outbound access to GitHub and npm registry. No such runner/Codespace control is available to this agent in the current tool session.
+
+### Step B — PR #36 preview verification
+
+**Status: ⛔ BLOCKED — Vercel project/deployment access required.**
+
+- No verified preview deployment URL or deployment record was available in this run.
+- Need read-only Vercel project/deployment access to identify/create the PR preview, inspect deployment metadata and fetch preview HTML. Creating a preview deployment may trigger a build; owner authorization is required before invoking any deploy/build action.
+- If using a token rather than an account connection, use a least-privileged read-only token where supported, supplied only through the authorized runner's secret store as `VERCEL_TOKEN`. Project/team identifiers may be supplied as `VERCEL_PROJECT_ID` and `VERCEL_TEAM_ID`; they are identifiers, not credentials. Do not paste bearer tokens into chat.
+- Required tests once unblocked: canonical link, Open Graph URL, JSON-LD `mainEntityOfPage`, both share-button locations, and all four share destinations in fetched preview HTML/browser output.
+
+### Step C — production SHA and Supabase migration ledger
+
+**Status: ⛔ BLOCKED — hosting metadata and read-only database access required.**
+
+- Repository `main` SHA remains a repository fact only; no Vercel production deployment SHA was verified.
+- No Supabase connection was attempted because no read-only connection was provided. No live schema, RLS, grants or `supabase_migrations.schema_migrations` ledger query result is available.
+- Required access: Vercel deployment metadata read-only; Supabase SQL read-only role restricted to catalog/schema/RLS/grants/migration-ledger inspection. Preferred runner secret name: `SUPABASE_READONLY_DATABASE_URL`. If SQL access cannot be granted and Supabase API access is used instead, an appropriately scoped read-only token may be configured as `SUPABASE_ACCESS_TOKEN`; do not expose service-role or owner credentials. Do not send credentials in chat.
+- No migrations or database changes were performed.
+
+### Step D — APK release gate
+
+**Status: ⛔ BLOCKED for signed build; read-only release inventory checked.**
+
+Evidence:
+- App repository Releases API response at inspection: `[]`: https://api.github.com/repos/MATI-AI-HUB/banglarvoice-app/releases
+- Existing static audit document says no APK/AAB artifact, SHA-256 or signature had been recorded: https://github.com/MATI-AI-HUB/automation-king-/blob/main/docs/APK_AUDIT.md
+- No artifact/signature/checksum/version evidence is available, so no release is approved. Building/signing requires an authorized Android build environment and owner-managed signing configuration; no keystore or signing secret was accessed.
+- If a candidate artifact is produced, first verify package, `versionCode`, `versionName`, signer certificate SHA-256 fingerprint, APK SHA-256 and artifact provenance. A GitHub Release may be prepared as a draft only after the owner authorizes upload/write access; publishing must remain separately gated.
+
+### Step E — live smoke and leakage test
+
+**Status: ⛔ BLOCKED — preview URL and safe test fixtures/accounts required.**
+
+- No verified preview URL, non-production test account, or fixture containing controlled draft/premium test content was provided.
+- Required fixtures: (1) public published article, (2) draft article, (3) premium/private article, (4) least-privileged reporter user, and (5) editor/admin test user, all non-production or explicitly approved test data. Do not provide production user passwords or private reporter data.
+- Once access is authorized, test HTML/RSC/API response bodies and cache headers for anonymous, reporter, editor/admin, draft and premium cases; verify auth/admin guards and ensure private responses are not publicly cacheable. Record exact URL, HTTP status, relevant headers, and redacted response assertions without storing secrets or PII.
+- No live/preview leakage test was executed; no claim of security pass is made.
+
+### Owner action required to resume
+
+Please authorize/provide these items through approved account/runner setup (not by pasting secrets into chat):
+
+1. **GitHub Codespace or self-hosted runner:** read repository/PR #36 and run Node 22/npm commands; network egress to GitHub and npm registry.
+2. **Vercel:** read-only project/deployment access; `VERCEL_TOKEN` in runner secret storage if an account connector is not used, plus `VERCEL_PROJECT_ID` and `VERCEL_TEAM_ID` if needed. Preview build/deploy execution requires separate explicit approval.
+3. **Supabase:** read-only DB connection `SUPABASE_READONLY_DATABASE_URL` in runner secret storage, or explicitly scoped read-only `SUPABASE_ACCESS_TOKEN`; schema, policies, grants and migration-ledger queries only.
+4. **APK signing:** do not send a keystore/password. Authorize an existing trusted release workflow/build environment; first inventory artifacts and metadata read-only. Draft Release upload needs explicit write authorization; publish requires separate approval.
+5. **Smoke tests:** a verified preview URL and safe non-production fixture/test accounts for public, draft, premium, reporter and admin roles.
+
+### Current overall state
+
+| Step | Result | Evidence |
+|---|---|---|
+| A. Clean checkout + Vitest | ⛔ BLOCKED | Node/npm versions above; `git ls-remote` exit 128 due DNS; Vitest file exists in PR branch |
+| B. Preview verification | ⛔ BLOCKED | No verified Vercel deployment URL/access |
+| C. Production SHA + Supabase ledger | ⛔ BLOCKED | No provider deployment record or read-only DB result |
+| D. APK release gate | ⛔ BLOCKED | Releases API returned `[]`; static audit says artifact/signature/hash absent |
+| E. Leakage/smoke test | ⛔ BLOCKED | No verified preview/test fixtures/accounts |
+
+No deployment, merge, live database mutation, secret rotation, cron change, APK signing, release upload/publication, social post, newsletter send or payment activation occurred in this follow-up.
