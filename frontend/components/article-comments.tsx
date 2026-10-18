@@ -11,11 +11,11 @@ type CommentItem = {
 };
 
 type Props = {
-  articleId: string;
+  articleSlug: string;
   locale: 'bn' | 'en';
 };
 
-export function ArticleComments({ articleId, locale }: Props) {
+export function ArticleComments({ articleSlug, locale }: Props) {
   const [comments, setComments] = useState<CommentItem[]>([]);
   const [name, setName] = useState('');
   const [body, setBody] = useState('');
@@ -43,7 +43,7 @@ export function ArticleComments({ articleId, locale }: Props) {
 
   const loadComments = useCallback(async () => {
     try {
-      const response = await fetch(`/api/article-comments?articleId=${encodeURIComponent(articleId)}`, { cache: 'no-store' });
+      const response = await fetch(`/api/article-comments?slug=${encodeURIComponent(articleSlug)}`, { cache: 'no-store' });
       const result = await response.json();
       if (!response.ok || !result.ok || !Array.isArray(result.comments)) throw new Error('load_failed');
       setComments(result.comments as CommentItem[]);
@@ -53,7 +53,7 @@ export function ArticleComments({ articleId, locale }: Props) {
     } finally {
       setLoading(false);
     }
-  }, [articleId, copy.unavailable]);
+  }, [articleSlug, copy.unavailable]);
 
   useEffect(() => {
     void loadComments();
@@ -74,7 +74,7 @@ export function ArticleComments({ articleId, locale }: Props) {
       const response = await fetch('/api/article-comments', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ articleId, displayName: name, body, website }),
+        body: JSON.stringify({ slug: articleSlug, displayName: name, body, website }),
       });
       const result = await response.json();
       if (!response.ok || !result.ok) {
