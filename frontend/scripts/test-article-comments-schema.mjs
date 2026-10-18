@@ -100,6 +100,14 @@ try {
     'anonymous caller cannot set status=approved directly',
     '42501',
   );
+  await expectReject(
+    () => client.query(
+      "insert into public.article_comments (article_id, display_name, body, moderated_by) values ($1, 'Reader', 'Attempt to spoof moderator', $2)",
+      [publicArticle, readerId],
+    ),
+    'anonymous caller cannot set moderator identity directly',
+    '42501',
+  );
 
   await setPrincipal('anon', null, '');
   await expectReject(
@@ -197,6 +205,17 @@ try {
   const toApprove = await insertComment(publicArticle, 'Review Candidate', 'Please review this comment');
   const toDelete = await insertComment(publicArticle, 'Delete Candidate', 'This pending comment will be deleted');
   const toReject = await insertComment(publicArticle, 'Reject Candidate', 'This pending comment will be rejected');
+
+  await setPrincipal('authenticated', editorId, '203.0.113.41');
+  const premiumApproved = await client.query(
+    "update public.article_comments set status = 'approved' where id = $1 returning id",
+    [premiumInsert.rows[0].id],
+  );
+  assert.equal(premiumApproved.rowCount, 1);
+  await setPrincipal('anon', null, '203.0.113.42');
+  const premiumCommentHidden = await client.query('select id from public.article_comments where id = $1', [premiumInsert.rows[0].id]);
+  assert.equal(premiumCommentHidden.rowCount, 0);
+  pass('approved premium-article comments stay hidden from non-entitled readers');
 
   await setPrincipal('authenticated', editorId, '203.0.113.41');
   const pendingForEditor = await client.query('select id from public.article_comments where id = $1', [toApprove.rows[0].id]);
