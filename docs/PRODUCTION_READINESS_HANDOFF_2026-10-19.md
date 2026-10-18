@@ -102,3 +102,71 @@ If hosted CI quota remains exhausted, use a clean local clone or an authorized s
 ## Explicit approval required
 
 Separate explicit approval is required for merge, production deployment, any live database/schema/grant/RLS change, secret rotation, scheduler/cron change, social publishing, newsletter bulk send, payment activation, production data export, or hosting/DNS/database cutover.
+
+
+## Execution report for requested steps 1–5 (2026-10-19)
+
+This section records the work actually completed in this execution. “Blocked / not verified” is not a pass. No deployment or production mutation was attempted.
+
+### 1. Review PR #36 and SSR share-link change
+
+**Status: STATIC REVIEW COMPLETED; runtime verification remains open.**
+
+- PR #36 is still open and Draft, targeting `main`; it has not been merged.
+- Reviewed the PR patch and source for `frontend/components/share-buttons.tsx`, `frontend/app/article/[slug]/page.tsx`, the four unit tests, and the CI runbook.
+- Both share-button placements in the article page receive `canonicalArticleUrl(a.slug)`.
+- The URL builder uses fixed HTTPS destinations for Facebook, X, WhatsApp and Telegram and URL-encodes title/URL values. The initial destination does not derive from `window.location` or the request Host.
+- Review caution: article metadata constructs canonical/Open Graph URLs separately from `canonicalArticleUrl`; test that both representations resolve to the same URL for Bengali/Unicode slugs in a real rendered response.
+- No browser hydration, preview HTML, or actual social share dialog was tested.
+
+### 2. Alternative test execution while CI quota is exhausted
+
+**Status: PARTIAL — isolated Node smoke tests passed; project checks NOT RUN.**
+
+- Recreated the PR URL-builder logic in a standalone Node.js test file because this execution environment could not clone GitHub (DNS resolution for `github.com` failed).
+- Result: 4/4 smoke tests passed for Facebook URL parameter, X/Telegram Unicode title and URL, WhatsApp title plus URL, and unknown platform.
+- This test was run against a standalone mirror of the implementation, **not** against the imported TSX source or Vitest test file.
+- `npm ci`, `npx tsc --noEmit`, `npm run lint`, `npm run build`, and `npx vitest run` were **NOT RUN**. No clean repository checkout or installed project dependencies were available, and network clone failed. No full app test/build result is claimed.
+- GitHub Actions run `39163173529` has four failed jobs with no executed steps. This is not evidence that code checks passed or that a project command failed.
+- No branch protection was bypassed and no check was manually marked successful.
+
+### 3. Production deployment SHA and Supabase migration ledger
+
+**Status: NOT VERIFIED — provider/database access required.**
+
+- The observed repository `main` SHA was `d3cb0c9a4bfcfd2557250d8c6498a8236377b9ae`; this does **not** establish which commit is deployed to production.
+- No verified hosting-provider deployment record or production environment scope was available in this execution.
+- No read-only Supabase connection or migration-ledger evidence was available. PR #35's description mentions `epaper_archive_storage`, and PR #32 describes public article views; those descriptions are not proof of deployed schema state.
+- No production credentials were requested or exposed. No SQL, migration, grants, RLS, database or secret changes were made.
+
+### 4. APK release, signature, checksum and download target
+
+**Status: RELEASE GATE BLOCKED — no public release artifact verified.**
+
+- The app repository GitHub Releases API returned an empty array (`[]`) at inspection time.
+- The repository's `docs/APK_AUDIT.md` itself says no APK/AAB binary was available for static artifact audit and no APK SHA-256/signature was recorded.
+- The static workflow review shows `.github/workflows/android-release.yml` builds signed Android App Bundles (AABs), while `.github/workflows/release-apks.yml` delegates to `build_apks.yml`. Workflow definitions alone do not prove a signed artifact was produced or published.
+- The signing-verification and release workflows were **not dispatched**: CI quota was reported exhausted, and running a signing/release workflow would require separate authorization and secret-backed actions.
+- Do not advertise a download endpoint as ready until the exact artifact, signer certificate/fingerprint, version, SHA-256 and trusted destination have been verified. No signing secret was read or changed.
+
+### 5. Preview/live smoke tests and private/premium content leakage
+
+**Status: NOT RUN — no usable preview deployment was provided/verified; live fetch was blocked.**
+
+- Attempted to open the public homepage and likely robots/sitemap/API URLs with the available web fetcher. The homepage returned a cache-miss fetch error; the other URLs were inaccessible through that fetcher. This is a tooling/access limitation, not proof the site is down.
+- A direct repository clone also failed because `github.com` DNS resolution was unavailable from the execution container.
+- No preview URL, hosting-provider access, authenticated test accounts, or safe test fixtures were available. Therefore homepage/search/article/e-paper/login/admin checks, raw HTML/RSC/API inspection, cache-header verification, and draft/premium leakage tests were **NOT RUN**.
+- Static review note for follow-up: `loadArticle` in the article page catches API exceptions and can return the same `missing` status used for a nonexistent article; verify whether backend/configuration failures are being misreported as 404s in runtime monitoring. This is a code-review concern, not a reproduced production incident.
+- No public content was posted and no production deployment or data access was attempted.
+
+### Consolidated status
+
+| Step | Result | Gate to close |
+|---|---|---|
+| 1. PR #36 review | Static review done; runtime pending | Clean checkout, actual project tests, preview/browser review |
+| 2. CI alternative | Standalone smoke 4/4; full project checks NOT RUN | Authorized local/self-hosted runner with lockfiles and dependencies |
+| 3. Production SHA + Supabase ledger | NOT VERIFIED | Read-only hosting-provider and Supabase metadata access |
+| 4. APK release gate | BLOCKED; no release/artifact verified | Published signed artifact, signer fingerprint, checksum, trusted URL |
+| 5. Preview/security smoke | NOT RUN | Preview URL, test accounts/fixtures, raw-response and cache access |
+
+**Final safety state:** PR #36 and PR #37 remain Draft/open; neither was merged. No production deployment, database migration, secret rotation, cron/scheduler change, social post, newsletter send or payment activation occurred. This report does not authorize those actions.
