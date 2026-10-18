@@ -5,13 +5,10 @@ export const dynamic = 'force-dynamic';
 export default async function EpaperPage() {
   let rows:any[] = [];
   try {
-    const supabase = createPublicSupabase();
-    // @ts-ignore
-    rows = await (fetchPublishedArticlesFeed as any)(supabase, 20);
-    if (!Array.isArray(rows)) rows = await (fetchPublishedArticlesFeed as any)(20);
-  } catch {
-    // @ts-ignore
-    rows = await (fetchPublishedArticlesFeed as any)(20);
+    rows = await fetchPublishedArticlesFeed(createPublicSupabase(), 20);
+  } catch (error) {
+    console.error('[epaper] failed to load published articles:', error instanceof Error ? error.message : error);
+    rows = [];
   }
   let archive: { url: string; label: string } | null = null;
   try {
