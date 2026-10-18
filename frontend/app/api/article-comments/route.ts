@@ -21,25 +21,29 @@ function badRequest(message: string, status = 400) {
   return NextResponse.json({ ok: false, error: message }, { status, headers: { 'Cache-Control': 'no-store' } });
 }
 
-async function isPublishedPublicArticle(articleId: string) {
+async function resolvePublishedPublicArticleId(reference: string) {
   const supabase = publicSupabase();
+  const column = UUID_RE.test(reference) ? 'id' : 'slug';
   const { data, error } = await supabase
     .from('articles')
     .select('id')
-    .eq('id', articleId)
+    .eq(column, reference)
     .eq('status', 'published')
     .maybeSingle();
 
   if (error) throw new Error('Could not verify article visibility');
-  return Boolean(data?.id);
+  return typeof data?.id === 'string' ? data.id : null;
 }
 
 export async function GET(request: NextRequest) {
-  const articleId = request.nextUrl.searchParams.get('articleId')?.trim() || '';
-  if (!UUID_RE.test(articleId)) return badRequest('invalid_article_id');
+  const articleReference = request.nextUrl.searchParams.get('slug')?.trim()
+    || request.nextUrl.searchParams.get('articleId')?.trim()
+    || '';
+  if (!articleReference || articleReference.length > 200) return badRequest('invalid_article_reference');
 
   try {
-    if (!(await isPublishedPublicArticle(articleId))) return badRequest('article_not_found', 404);
+    const articleId = await resolvePublishedPublicArticleId(articleReference);
+    if (!articleId) return badRequest('article_not_found', 404);
 
     const supabase = publicSupabase();
     const { data, error } = await supabase
@@ -80,8 +84,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ ok: true, status: 'pending' }, { status: 202, headers: { 'Cache-Control': 'no-store' } });
   }
 
-  const articleId = typeof payload.articleId === 'string' ? payload.articleId.trim() : '';
-  if (!UUID_RE.test(articleId)) return badRequest('invalid_article_id');
+  const articleReference = typeof payload.slug === 'string'
+    ? payload.slug.trim()
+    : typeof payload.articleId === 'string' ? payload.articleId.trim() : '';
+  if (!articleReference || articleReference.length > 200) return badRequest('invalid_article_reference');
 
   const normalized = normalizeArticleCommentInput({
     displayName: payload.displayName,
@@ -102,7 +108,8 @@ export async function POST(request: NextRequest) {
       return badRequest('rate_limited', 429);
     }
 
-    if (!(await isPublishedPublicArticle(articleId))) return badRequest('article_not_found', 404);
+    const articleId = await resolvePublishedPublicArticleId(articleReference);
+    if (!articleId) return badRequest('article_not_found', 404);
 
     // Uses only the publishable/anon key. RLS is the authority for insert and
     // enforces pending-only comments; no service-role or Vault secret is exposed.
