@@ -1,0 +1,16 @@
+[extend]
+useDefault = true
+
+[allowlist]
+description = "Reviewed: build output, baseline hashes, anon keys, doc prose"
+paths = [
+  '''(^|/)\.next/''',
+  '''(^|/)\.gitleaks-baseline\.json$''',
+]
+commits = [
+  "432d7e0acf54342d4477975af605d449abb01343",
+  "140746cccea4890b8a54b4824b366c68c0b603c9",
+  "09f64240524f9866ade28453100be55772208da3",
+  "d6753e5e884a75da32369be18df3fab89912fc03",
+  "61d7c5b44c152876ff1a15277a81898fee2deab2",
+]
