@@ -2,7 +2,7 @@ begin;
 
 create schema if not exists private;
 
-create table public.article_comments (
+create table if not exists public.article_comments (
   id uuid primary key default gen_random_uuid(),
   article_id uuid not null references public.articles(id) on delete cascade,
   display_name text not null check (
@@ -28,7 +28,7 @@ create table public.article_comments (
     )
 );
 
-create index article_comments_article_status_created_idx
+create index if not exists article_comments_article_status_created_idx
   on public.article_comments (article_id, status, created_at desc);
 
 alter table public.article_comments enable row level security;
@@ -37,12 +37,12 @@ alter table public.article_comments enable row level security;
 -- insert, not only requests passing through a frontend route. It stores only a
 -- deterministic 64-bit pseudonymous key, never the raw client IP; expired rows
 -- are pruned on a later successful submission.
-create table private.article_comment_rate_limits (
+create table if not exists private.article_comment_rate_limits (
   client_key bigint not null,
   occurred_at timestamptz not null default clock_timestamp()
 );
 
-create index article_comment_rate_limits_key_time_idx
+create index if not exists article_comment_rate_limits_key_time_idx
   on private.article_comment_rate_limits (client_key, occurred_at desc);
 
 revoke all on table private.article_comment_rate_limits from public, anon, authenticated, service_role;
@@ -108,6 +108,7 @@ $function$;
 
 revoke all on function private.enforce_article_comment_rate_limit() from public, anon, authenticated, service_role;
 
+drop trigger if exists article_comments_rate_limit_before_insert on public.article_comments;
 create trigger article_comments_rate_limit_before_insert
   before insert on public.article_comments
   for each row execute function private.enforce_article_comment_rate_limit();
@@ -142,6 +143,7 @@ $function$;
 
 revoke all on function private.set_article_comment_moderation_metadata() from public, anon, authenticated, service_role;
 
+drop trigger if exists article_comments_moderation_metadata_before_update on public.article_comments;
 create trigger article_comments_moderation_metadata_before_update
   before update on public.article_comments
   for each row execute function private.set_article_comment_moderation_metadata();
@@ -154,7 +156,8 @@ grant update (status, moderated_at, moderated_by)
   on table public.article_comments to authenticated;
 grant delete on table public.article_comments to authenticated;
 
-create policy article_comments_read_approved
+drop policy if exists article_comments_read_approved on public.article_comments;
+  create policy article_comments_read_approved
   on public.article_comments
   for select
   to anon, authenticated
@@ -168,13 +171,15 @@ create policy article_comments_read_approved
     )
   );
 
-create policy article_comments_editor_read_all
+drop policy if exists article_comments_editor_read_all on public.article_comments;
+  create policy article_comments_editor_read_all
   on public.article_comments
   for select
   to authenticated
   using (public.current_app_role()::text = any (array['desk_editor', 'chief_editor', 'admin']));
 
-create policy article_comments_insert_pending_for_published
+drop policy if exists article_comments_insert_pending_for_published on public.article_comments;
+  create policy article_comments_insert_pending_for_published
   on public.article_comments
   for insert
   to anon, authenticated
@@ -190,7 +195,8 @@ create policy article_comments_insert_pending_for_published
     )
   );
 
-create policy article_comments_editor_moderate
+drop policy if exists article_comments_editor_moderate on public.article_comments;
+  create policy article_comments_editor_moderate
   on public.article_comments
   for update
   to authenticated
@@ -203,7 +209,8 @@ create policy article_comments_editor_moderate
     )
   );
 
-create policy article_comments_editor_delete
+drop policy if exists article_comments_editor_delete on public.article_comments;
+  create policy article_comments_editor_delete
   on public.article_comments
   for delete
   to authenticated
