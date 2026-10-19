@@ -1,0 +1,3 @@
+.gitleaks-baseline.json
+frontend/.next/
+**/.next/
