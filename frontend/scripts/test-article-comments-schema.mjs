@@ -43,10 +43,18 @@ async function setPrincipal(role, subject, ip) {
 }
 
 async function insertComment(articleId, displayName, body) {
-  return client.query(
-    'insert into public.article_comments (article_id, display_name, body) values ($1, $2, $3) returning id, status, moderated_by, moderated_at',
+  const who = (await client.query('select current_user as u')).rows[0].u;
+  await client.query(
+    'insert into public.article_comments (article_id, display_name, body) values ($1, $2, $3)',
     [articleId, displayName, body],
   );
+  await client.query('reset role');
+  const row = await client.query(
+    'select id, status, moderated_by, moderated_at from public.article_comments where article_id = $1 and display_name = $2 and body = $3 order by created_at desc limit 1',
+    [articleId, displayName, body],
+  );
+  await client.query('set role ' + who);
+  return row;
 }
 
 const fixture = [
