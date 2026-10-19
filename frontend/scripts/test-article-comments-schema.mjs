@@ -57,6 +57,14 @@ async function insertComment(articleId, displayName, body) {
   return row;
 }
 
+async function readModeration(id) {
+  const who = (await client.query('select current_user as u')).rows[0].u;
+  await client.query('reset role');
+  const r = await client.query('select moderated_by, moderated_at from public.article_comments where id = $1', [id]);
+  await client.query('set role ' + who);
+  return r.rows[0];
+}
+
 const fixture = [
   'create role anon nologin;',
   'create role authenticated nologin;',
@@ -236,20 +244,22 @@ try {
   const pendingForEditor = await client.query('select id from public.article_comments where id = $1', [toApprove.rows[0].id]);
   assert.equal(pendingForEditor.rowCount, 1);
   const approved = await client.query(
-    "update public.article_comments set status = 'approved', moderated_at = '2000-01-01T00:00:00Z', moderated_by = $2 where id = $1 returning status, moderated_by, moderated_at",
+    "update public.article_comments set status = 'approved', moderated_at = '2000-01-01T00:00:00Z', moderated_by = $2 where id = $1 returning status",
     [toApprove.rows[0].id, readerId],
   );
   assert.equal(approved.rows[0].status, 'approved');
-  assert.equal(approved.rows[0].moderated_by, editorId);
-  assert.ok(new Date(approved.rows[0].moderated_at).getUTCFullYear() >= 2026);
+  const approvedMeta = await readModeration(toApprove.rows[0].id);
+  assert.equal(approvedMeta.moderated_by, editorId);
+  assert.ok(new Date(approvedMeta.moderated_at).getUTCFullYear() >= 2026);
   pass('editor approval overwrites client-supplied moderator ID and timestamp');
 
   const rejected = await client.query(
-    "update public.article_comments set status = 'rejected' where id = $1 returning status, moderated_by",
+    "update public.article_comments set status = 'rejected' where id = $1 returning status",
     [toReject.rows[0].id],
   );
   assert.equal(rejected.rows[0].status, 'rejected');
-  assert.equal(rejected.rows[0].moderated_by, editorId);
+  const rejectedMeta = await readModeration(toReject.rows[0].id);
+  assert.equal(rejectedMeta.moderated_by, editorId);
   pass('editor can reject a pending comment and the database records the actor');
 
   await expectReject(
