@@ -21,3 +21,5 @@ node_modules/
 worker/node_modules/
 
 mobile_monorepo/apps/*/android/app/keystore/
+frontend/.next/
+**/.next/
