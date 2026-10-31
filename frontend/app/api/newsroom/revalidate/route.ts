@@ -101,7 +101,7 @@ export async function POST(req: Request) {
 
   // Run after the response so shadow delivery cannot delay or break revalidation.
   after(async () => {
-    await sendManagerShadowEvent(record, isPublished ? 'article.published' : 'article.unpublished');
+    await sendManagerShadowEvent(isPublished ? record : (oldRecord ?? record), isPublished ? 'article.published' : 'article.unpublished');
   });
 
   return json({
