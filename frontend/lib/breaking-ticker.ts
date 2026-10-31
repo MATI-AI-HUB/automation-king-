@@ -1,4 +1,4 @@
-import type { Locale } from './i18n';
+import { t, type Locale } from './i18n';
 
 export type TickerQueryResult<T> = {
   data: T[] | null;
@@ -22,10 +22,16 @@ function localizedArticleTitles(
   rows: Array<{ title_bn?: string | null; title_en?: string | null }>,
   locale: Locale,
 ): string[] {
-  return rows
-    .map((row) => locale === 'en' ? (row.title_en || row.title_bn || '') : (row.title_bn || row.title_en || ''))
-    .map((title) => title.trim())
-    .filter(Boolean);
+  return rows.flatMap((row) => {
+    const titleBn = row.title_bn?.trim() || '';
+    const titleEn = row.title_en?.trim() || '';
+    if (locale === 'en') {
+      if (titleEn) return [titleEn];
+      return titleBn ? [`${t(locale, 'original_bengali')}: ${titleBn}`] : [];
+    }
+    if (titleBn) return [titleBn];
+    return titleEn ? [`${t(locale, 'original_english')}: ${titleEn}`] : [];
+  });
 }
 
 /** Resilient hierarchy: active editorial ticker → breaking articles → latest published → local copy. */

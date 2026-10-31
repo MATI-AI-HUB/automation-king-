@@ -38,7 +38,7 @@ describe('resolveBreakingTicker', () => {
       recentArticles: unused(),
     }, 'en');
 
-    expect(result).toEqual(['Headline One', 'শিরোনাম দুই']);
+    expect(result).toEqual(['Headline One', 'Bengali original: শিরোনাম দুই']);
     expect(activeTicker).not.toHaveBeenCalled();
   });
 
@@ -55,6 +55,15 @@ describe('resolveBreakingTicker', () => {
 
     expect(result).toEqual(['Latest Story']);
     expect(recentArticles).toHaveBeenCalledOnce();
+  });
+
+  it('labels an English headline shown in the Bengali interface when the Bengali title is missing', async () => {
+    const result = await resolveBreakingTicker({
+      activeTicker: unused(),
+      breakingArticles: async () => ({ data: [{ title_bn: null, title_en: 'English-only headline' }], error: null }),
+      recentArticles: unused(),
+    }, 'bn');
+    expect(result).toEqual(['মূল ইংরেজি: English-only headline']);
   });
 
   it('uses localized static copy when all data sources fail', async () => {
