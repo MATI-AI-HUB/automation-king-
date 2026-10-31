@@ -19,6 +19,7 @@ export type Article = {
   source_url?: string;
   image_is_representational?: boolean;
   origin?: 'aggregated' | 'original';
+  language_fallback?: boolean;
 };
 
 
@@ -138,6 +139,7 @@ export function LeadCard({ article, href, locale }: { article: Article; href: st
           <span>{translateCategory(locale, article.category || 'সর্বশেষ')}</span>
           {biasBadge(article.bias_index, locale)}
         </div>
+        {locale === 'en' && article.language_fallback ? <p className="mb-1 text-[10px] font-medium text-neutral-500">{t(locale, 'english_content_fallback')}</p> : null}
         <h3 className="font-serifbn text-2xl font-extrabold leading-snug text-ink group-hover:text-primary dark:text-paper md:text-3xl">
           {article.title}
         </h3>
@@ -179,6 +181,7 @@ export function ArticleCard({ article, href, locale }: { article: Article; href:
           </span>
           {biasBadge(article.bias_index, locale)}
         </div>
+        {locale === 'en' && article.language_fallback ? <p className="mb-1 text-[10px] font-medium text-neutral-500">{t(locale, 'english_content_fallback')}</p> : null}
         <h3 className="font-serifbn text-lg font-bold leading-snug text-ink group-hover:text-primary dark:text-paper">
           {article.title}
         </h3>
@@ -217,6 +220,7 @@ export function TrendingItem({ rank, article, href, locale }: { rank?: number; a
         <h4 className="line-clamp-2 text-sm font-bold leading-snug text-ink group-hover:text-primary dark:text-paper">
           {article.title}
         </h4>
+        {locale === 'en' && article.language_fallback ? <p className="mt-0.5 text-[9px] font-medium text-neutral-500">{t(locale, 'english_content_fallback')}</p> : null}
         <div className="mt-1 flex flex-wrap items-center gap-1 text-[11px] text-neutral-500">
           <span className="font-semibold text-ink dark:text-paper">{article.source_name || article.author || t(locale, 'source_label')}</span>
           <span>•</span>

@@ -154,6 +154,7 @@ export async function FallbackFeed({
                 slug: article.slug,
                 title: isEnglish ? (article.title_en || article.title_bn) : article.title_bn,
                 summary: isEnglish ? (article.dek_en || article.dek_bn) : article.dek_bn,
+                language_fallback: isEnglish && (!article.title_en?.trim() || (!!article.dek_bn?.trim() && !article.dek_en?.trim())),
                 category: article.category,
                 image_url: article.featured_image,
                 image_credit: article.image_credit,

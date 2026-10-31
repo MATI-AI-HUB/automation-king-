@@ -45,6 +45,7 @@ export default async function CategoryPage({ params }: PageProps) {
                 slug: a.slug,
                 title: locale === 'en' ? (a.title_en || a.title_bn) : a.title_bn,
                 summary: locale === 'en' ? (a.dek_en || a.dek_bn) : a.dek_bn,
+                language_fallback: locale === 'en' && (!a.title_en?.trim() || (!!a.dek_bn?.trim() && !a.dek_en?.trim())),
                 category: a.category,
                 image_url: a.featured_image,
                 image_credit: a.image_credit,

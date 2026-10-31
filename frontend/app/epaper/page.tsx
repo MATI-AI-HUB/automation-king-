@@ -11,8 +11,8 @@ export default async function EpaperPage() {
   const locale = getLocaleFromCookie(cookieStore.get(LOCALE_COOKIE)?.value);
   const isEnglish = locale === 'en';
   const copy = isEnglish
-    ? { empty: 'No published stories are available yet.', section: 'Front page', live: 'LIVE', archive: 'Latest archive' }
-    : { empty: 'কোনো প্রকাশিত সংবাদ নেই', section: 'প্রথম পাতা', live: 'লাইভ', archive: 'সর্বশেষ আর্কাইভ' };
+    ? { empty: 'No published stories are available yet.', section: 'Front page', live: 'LIVE', archive: 'Latest archive', originalNote: 'English translation unavailable — Bengali originals are shown where needed.' }
+    : { empty: 'কোনো প্রকাশিত সংবাদ নেই', section: 'প্রথম পাতা', live: 'লাইভ', archive: 'সর্বশেষ আর্কাইভ', originalNote: 'ইংরেজি অনুবাদ নেই — যেখানে প্রয়োজন মূল বাংলা দেখানো হচ্ছে।' };
 
   let rows: any[] = [];
   try {
@@ -49,6 +49,9 @@ export default async function EpaperPage() {
   const editionLabel = now.toLocaleDateString(isEnglish ? 'en-GB' : 'bn-BD', {
     timeZone: 'Asia/Dhaka', year: 'numeric', month: 'long', day: 'numeric',
   });
+  const hasEnglishFallback = isEnglish && rows.some((article: any) =>
+    !article.title_en?.trim() || (!!article.content_bn?.trim() && !article.content_en?.trim()),
+  );
   const titleFor = (article: any) => isEnglish ? (article.title_en || article.title_bn || '') : (article.title_bn || article.title_en || '');
   const bodyFor = (article: any, length: number) => (isEnglish
     ? (article.content_en || article.excerpt_bn || '')
@@ -80,11 +83,12 @@ export default async function EpaperPage() {
           <span>banglarvoice24news.com</span>
         </div>
         <div className="border-y-[3px] border-double bg-white py-3 text-center">
-          <h1 className="font-serifbn text-[32px] font-black md:text-[48px]">বাংলার ভয়েস | 24NEWS</h1>
+          <h1 className="font-serifbn text-[32px] font-black md:text-[48px]">{isEnglish ? 'Banglar Voice | 24NEWS' : 'বাংলার ভয়েস | 24NEWS'}</h1>
         </div>
       </div>
       <main className="mx-auto max-w-5xl px-4 py-6">
         {archive && <PdfArchiveViewer url={archive.url} label={archive.label} locale={locale} />}
+        {hasEnglishFallback ? <p role="note" className="mb-4 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900">{copy.originalNote}</p> : null}
         <EPaperViewer edition={edition as any} />
       </main>
     </div>

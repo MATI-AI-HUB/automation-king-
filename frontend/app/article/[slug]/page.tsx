@@ -157,6 +157,9 @@ export default async function ArticlePage({ params }: PageProps) {
   const displayTitle = locale === 'en' ? (a.title_en || a.title_bn) : a.title_bn;
   const displayDek = locale === 'en' ? (a.dek_en || a.dek_bn) : a.dek_bn;
   const displayBody = locale === 'en' ? (a.body_en || a.body_bn) : a.body_bn;
+  const showLanguageFallback = locale === 'en' && (
+    !a.title_en?.trim() || (!!a.dek_bn?.trim() && !a.dek_en?.trim()) || (!!a.body_bn?.trim() && !a.body_en?.trim())
+  );
 
   const sanitizedBody = sanitizeHtml(displayBody || '');
   const narrateText = `${displayTitle}। ${displayDek || ''} ${toPlainText(displayBody || '')}`;
@@ -200,6 +203,7 @@ export default async function ArticlePage({ params }: PageProps) {
           </span>
         )}
       </div>
+      {showLanguageFallback ? <p role="note" className="mt-3 rounded-lg border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-900 dark:border-amber-900/50 dark:bg-amber-950/30 dark:text-amber-200">{t(locale, 'english_content_fallback')}</p> : null}
       <h1 className="mt-2 font-serifbn text-3xl font-extrabold leading-tight md:text-4xl">{displayTitle}</h1>
       {displayDek && (
         <p className="mt-4 text-lg leading-relaxed text-neutral-600 dark:text-neutral-300">{displayDek}</p>
