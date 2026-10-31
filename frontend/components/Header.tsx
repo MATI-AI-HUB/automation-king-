@@ -9,6 +9,7 @@ import { BreakingMarquee } from './breaking-marquee';
 import { WeatherWidget } from './weather-widget';
 import { t, type Locale } from '@/lib/i18n';
 import { formatBanglaCalendarDate } from '@/lib/bn-date';
+import { TopBar } from './TopBar';
 
 const NAV_KEYS = [
   { href: '/#latest', key: 'latest' as const },
@@ -16,7 +17,7 @@ const NAV_KEYS = [
   { href: '/category/economy', key: 'economy' as const },
   { href: '/category/international', key: 'international' as const },
   { href: '/epaper', key: 'epaper' as const },
-  { href: '/search', key: 'search_placeholder' as const },
+  { href: '/search', key: 'search' as const },
   { href: '/download', key: 'app' as const },
 ];
 
@@ -62,7 +63,7 @@ function LiveBanglaClock({ locale }: { locale: Locale }) {
   );
 }
 
-export function Header({ locale = 'bn' as Locale }: { locale?: Locale }) {
+export function Header({ locale = 'bn' as Locale, redesignEnabled = false }: { locale?: Locale; redesignEnabled?: boolean }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -101,6 +102,8 @@ export function Header({ locale = 'bn' as Locale }: { locale?: Locale }) {
   }, [menuOpen]);
 
   const navLinks = NAV_KEYS.map((n) => ({ href: n.href, label: t(locale, n.key) }));
+
+  if (redesignEnabled) return <RedesignedHeader locale={locale} navLinks={navLinks} />;
 
   return (
     <>
@@ -158,7 +161,7 @@ export function Header({ locale = 'bn' as Locale }: { locale?: Locale }) {
             </Link>
           </div>
 
-          <nav className="hidden items-center gap-1 text-sm font-semibold md:flex" aria-label="Main navigation">
+          <nav className="hidden items-center gap-1 text-sm font-semibold md:flex" aria-label={t(locale, 'nav_primary')}>
             {navLinks.map((l) => (
               <a
                 key={l.href}
@@ -187,7 +190,7 @@ export function Header({ locale = 'bn' as Locale }: { locale?: Locale }) {
             <a href="/login" aria-label={t(locale, 'account')} title={t(locale, 'account')} className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-ink hover:bg-muted dark:border-white/20 dark:text-white dark:hover:bg-white/10">
               <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4"/><path d="M5 21a7 7 0 0 1 14 0"/></svg>
             </a>
-            <ThemeToggle />
+            <ThemeToggle locale={locale} />
           </div>
         </div>
 
@@ -204,7 +207,7 @@ export function Header({ locale = 'bn' as Locale }: { locale?: Locale }) {
               ref={menuRef}
               tabIndex={-1}
               className="relative z-50 max-h-[calc(100dvh-56px)] overflow-y-auto border-t border-border bg-paper px-4 py-3 shadow-glass outline-none md:hidden dark:border-white/10 dark:bg-ink"
-              aria-label="Mobile navigation"
+              aria-label={t(locale, 'nav_mobile')}
             >
               <ul className="space-y-1">
                 {navLinks.map((l) => (
@@ -226,6 +229,108 @@ export function Header({ locale = 'bn' as Locale }: { locale?: Locale }) {
           </>
         )}
 
+        <BreakingMarquee locale={locale} />
+      </header>
+    </>
+  );
+}
+
+function RedesignedHeader({
+  locale,
+  navLinks,
+}: {
+  locale: Locale;
+  navLinks: Array<{ href: string; label: string }>;
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('keydown', onKeyDown);
+    const previousOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.removeEventListener('keydown', onKeyDown);
+      document.body.style.overflow = previousOverflow;
+    };
+  }, [menuOpen]);
+
+  const fontClass = locale === 'bn' ? 'font-serifbn leading-[1.7]' : 'leading-[1.7]';
+  const navStyle = locale === 'en' ? { fontFamily: 'var(--font-inter), Inter, sans-serif' } : undefined;
+
+  return (
+    <>
+      <TopBar locale={locale} />
+      <header className="sticky top-0 z-50 border-b border-border/80 bg-paper/95 shadow-glass backdrop-blur-xl supports-[backdrop-filter]:bg-paper/85">
+        <div className="mx-auto grid max-w-6xl grid-cols-[40px_1fr_auto] items-center gap-2 px-4 py-3 md:grid-cols-[1fr_auto_1fr] md:gap-4 md:py-4">
+          <div className="hidden md:block" aria-hidden="true" />
+          <button
+            type="button"
+            onClick={() => setMenuOpen((value) => !value)}
+            aria-expanded={menuOpen}
+            aria-controls="v2-mobile-menu"
+            aria-label={t(locale, menuOpen ? 'menu_close' : 'menu_open')}
+            className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-ink hover:bg-muted md:hidden dark:border-white/20 dark:text-white dark:hover:bg-white/10"
+          >
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden="true">
+              {menuOpen ? <path d="M18 6 6 18M6 6l12 12" /> : <path d="M4 7h16M4 12h16M4 17h16" />}
+            </svg>
+          </button>
+
+          <Link href="/" className="justify-self-center inline-flex items-center gap-2.5 rounded-xl px-1 py-0.5" aria-label={`Banglar Voice 24NEWS — ${t(locale, 'home')}`}>
+            <svg width="44" height="44" viewBox="0 0 44 44" role="img" aria-label={locale === 'en' ? 'Banglar Voice mark' : 'বাংলার ভয়েস প্রতীক'}>
+              <circle cx="22" cy="22" r="20" fill="#CC0000" />
+              <path d="M11 22h4l3-8 5 16 3-8h7" fill="none" stroke="#fff" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" />
+            </svg>
+            <span className="flex flex-col leading-tight">
+              <span className="text-[15px] font-black tracking-tight text-ink dark:text-white sm:text-lg">
+                {locale === 'en' ? 'Banglar Voice' : 'বাংলার ভয়েস'}
+              </span>
+              <span className="text-[9px] font-extrabold uppercase tracking-[0.2em] text-crimson sm:text-[10px]">24NEWS</span>
+            </span>
+          </Link>
+
+          <div className="flex items-center justify-end gap-1.5 sm:gap-2">
+            <Link href="/#live" className="hidden rounded-full border border-crimson/30 px-3 py-2 text-xs font-bold text-crimson hover:bg-crimson/5 sm:inline-flex dark:text-red-300">
+              <span className="mr-1.5 inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-crimson" aria-hidden="true" />
+              {t(locale, 'live_tv')}
+            </Link>
+            <ThemeToggle locale={locale} />
+            <Link href="/login" aria-label={t(locale, 'account')} title={t(locale, 'account')} className="inline-flex h-9 w-9 items-center justify-center rounded-full border border-border text-ink hover:bg-muted dark:border-white/20 dark:text-white dark:hover:bg-white/10">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><circle cx="12" cy="8" r="4" /><path d="M5 21a7 7 0 0 1 14 0" /></svg>
+            </Link>
+          </div>
+        </div>
+
+        <nav style={navStyle} className={`mx-auto flex max-w-6xl gap-1 overflow-x-auto border-t border-border/50 px-3 py-1.5 text-xs font-semibold text-ink/85 sm:justify-center sm:text-sm dark:text-white/85 ${fontClass}`} aria-label={t(locale, 'nav_primary')}>
+          {navLinks.map((link) => (
+            <Link key={link.href} href={link.href} className="shrink-0 rounded-full px-3 py-1.5 transition-colors hover:bg-muted hover:text-crimson dark:hover:bg-white/10">
+              {link.label}
+            </Link>
+          ))}
+        </nav>
+
+        {menuOpen && (
+          <>
+            <button type="button" aria-label={t(locale, 'menu_close')} onClick={() => setMenuOpen(false)} className="fixed inset-0 z-40 bg-black/40 backdrop-blur-sm md:hidden" />
+            <nav id="v2-mobile-menu" style={navStyle} className={`relative z-50 max-h-[calc(100dvh-56px)] overflow-y-auto border-t border-border bg-paper px-4 py-3 shadow-glass outline-none md:hidden dark:border-white/10 dark:bg-ink ${fontClass}`} aria-label={t(locale, 'nav_mobile')}>
+              <ul className="space-y-1">
+                {navLinks.map((link) => (
+                  <li key={link.href}>
+                    <Link href={link.href} onClick={() => setMenuOpen(false)} className="block rounded-lg px-3 py-2.5 text-[15px] font-semibold text-ink/85 hover:bg-muted dark:text-white/85 dark:hover:bg-white/10">{link.label}</Link>
+                  </li>
+                ))}
+                <li className="flex gap-3 pt-2 text-sm font-medium text-ink/70 dark:text-white/70">
+                  <Link href="/about" onClick={() => setMenuOpen(false)} className="hover:underline">{t(locale, 'about')}</Link>
+                  <Link href="/contact" onClick={() => setMenuOpen(false)} className="hover:underline">{t(locale, 'contact')}</Link>
+                </li>
+              </ul>
+            </nav>
+          </>
+        )}
         <BreakingMarquee locale={locale} />
       </header>
     </>

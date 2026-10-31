@@ -19,10 +19,10 @@ import type { FeedArticle } from '../lib/mockData';
 
 export const revalidate = 60;
 
-export const metadata: Metadata = {
-  title: 'সর্বশেষ সংবাদ',
-  description: 'বাংলার ভয়েস — স্বাধীন সংবাদ প্রচারে নির্ভীক',
-};
+export async function generateMetadata(): Promise<Metadata> {
+  const locale = getLocaleFromCookie((await cookies()).get(LOCALE_COOKIE)?.value);
+  return { title: t(locale, 'home_meta_title'), description: t(locale, 'home_meta_description') };
+}
 
 const toBento = (a: FeedArticle, locale: Locale) => ({
   id: a.id,
@@ -54,7 +54,7 @@ export default async function HomePage() {
     const data = await api.articles(20, locale);
     items = data.items || [];
   } catch (e) {
-    error = e instanceof Error ? e.message : 'connection failed';
+    error = e instanceof Error ? e.message : t(locale, 'backend_error');
   }
   // Live-blog + video feeds come from dedicated public endpoints. On failure we
   // silently fall back to demo data so the homepage never breaks.
@@ -126,7 +126,7 @@ export default async function HomePage() {
           className="inline-block h-2 w-2 animate-pulse rounded-full bg-primary"
         />
         <span className="text-base font-black uppercase tracking-widest text-primary dark:text-paper">
-          বাংলার ভয়েস
+          {t(locale, 'brand_name')}
         </span>
         <span aria-hidden="true" className="h-4 w-px bg-crimson/60" />
         <span className="inline-flex items-baseline gap-1.5">
@@ -134,7 +134,7 @@ export default async function HomePage() {
             24
           </span>
           <span className="text-xs font-black uppercase tracking-[0.22em] text-ink/70 dark:text-paper/70">
-            News
+            {t(locale, 'brand_news')}
           </span>
         </span>
       </div>
@@ -150,10 +150,10 @@ export default async function HomePage() {
         <div className="mx-auto mb-6 max-w-xl rounded border border-amber-300 bg-amber-50 p-4 text-center text-sm dark:bg-amber-900/30">
           {demoMode ? (
             <>
-              ব্যাকএন্ডে সংযোগ হয়নি ({error}) — <code>NEXT_PUBLIC_API_URL</code> ঠিক করুন। ডেমো মোডে নিচে নমুনা সংবাদ দেখানো হচ্ছে।
+              {t(locale, 'backend_error')} ({error}) — <code>NEXT_PUBLIC_API_URL</code> {t(locale, 'backend_demo_config')} {t(locale, 'backend_error_hint')}
             </>
           ) : (
-            <>ব্যাকএন্ডে সংযোগ হয়নি ({error})। প্রকাশিত সংবাদ এই মুহূর্তে লোড করা যায়নি।</>
+            <>{t(locale, 'backend_error')} ({error}). {t(locale, 'backend_stories_load_error')}</>
           )}
         </div>
       )}
@@ -162,16 +162,16 @@ export default async function HomePage() {
       <HeroBentoGrid articles={feed.map((a) => toBento(a, locale))} locale={locale} />
 
       <section
-        aria-label="ই-পেপার"
+        aria-label={t(locale, 'epaper_section_label')}
         className="mt-8 flex flex-col items-start justify-between gap-4 rounded-2xl border border-primary/20 bg-gradient-to-r from-primary/10 via-paper to-paper p-5 shadow-sm sm:flex-row sm:items-center sm:p-6 dark:from-primary/20 dark:via-neutral-900 dark:to-neutral-900"
       >
         <div>
-          <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">বাংলার ভয়েস</p>
-          <h2 className="mt-1 font-serifbn text-xl font-bold text-ink dark:text-paper">দৈনিক ই-পেপার পড়ুন</h2>
-          <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">দিনের সেরা সংবাদ একসাথে — সংস্করণ, আর্কাইভ ও প্রিন্ট/PDF সুবিধাসহ।</p>
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-primary">{t(locale, 'brand_name')}</p>
+          <h2 className="mt-1 font-serifbn text-xl font-bold text-ink dark:text-paper">{t(locale, 'epaper_section_title')}</h2>
+          <p className="mt-1 text-sm text-neutral-600 dark:text-neutral-300">{t(locale, 'epaper_section_body')}</p>
         </div>
         <Link href="/epaper" className="inline-flex shrink-0 items-center rounded-full bg-primary px-5 py-2.5 text-sm font-bold text-white shadow-sm transition-colors hover:bg-primary/90">
-          ই-পেপার খুলুন
+          {t(locale, 'epaper_section_cta')}
         </Link>
       </section>
 
@@ -216,25 +216,26 @@ export default async function HomePage() {
       {feed.length >= 6 && <CategoryModules articles={feed.map((a) => toBento(a, locale))} locale={locale} />}
 
       {items.length === 0 && !error && (
-        <p className="py-10 text-center text-neutral-500 dark:text-neutral-400">নতুন প্রকাশিত সংবাদ প্রস্তুত হচ্ছে। যাচাইকৃত সংবাদ প্রকাশিত হলে এখানেই দেখা যাবে।</p>
+        <p className="py-10 text-center text-neutral-500 dark:text-neutral-400">{t(locale, 'home_empty_state')}</p>
       )}
 
       {/* Al Jazeera-style live-blog timeline */}
       <LiveBlog entries={live} locale={locale} />
 
       {/* Dark video & podcast hub */}
-      <VideoHub videos={videos} />
+      <VideoHub videos={videos} locale={locale} />
 
       {items.length > 0 ? (
         <AINewsAnchor
           enable3d={enable3dVisuals}
           script={{
-            title: 'আজকের প্রধান সংবাদ — AI অ্যাংকরের সাথে',
+            title: t(locale, 'ai_anchor_script_title'),
             body: items
               .slice(0, 5)
               .map((a) => `${a.title_bn}। ${a.dek_bn || ''}`.trim())
               .join(' '),
           }}
+          locale={locale}
         />
       ) : null}
 

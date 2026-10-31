@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { t, type Locale } from '@/lib/i18n';
 
 const THEME_COOKIE = 'bv-theme';
 const THEME_MAX_AGE = 60 * 60 * 24 * 365;
@@ -23,7 +24,7 @@ function readStoredTheme(): boolean | null {
   return null;
 }
 
-export function ThemeToggle() {
+export function ThemeToggle({ locale = 'bn' }: { locale?: Locale }) {
   const [dark, setDark] = useState(false);
   const [hydrated, setHydrated] = useState(false);
 
@@ -49,7 +50,7 @@ export function ThemeToggle() {
     <button
       type="button"
       onClick={() => setDark((value) => !value)}
-      aria-label={dark ? 'হালকা থিম চালু করুন' : 'ডার্ক থিম চালু করুন'}
+      aria-label={dark ? t(locale, 'theme_light_mode') : t(locale, 'theme_dark_mode')}
       aria-pressed={dark}
       className="rounded-full border border-border px-3 py-1 text-sm"
     >

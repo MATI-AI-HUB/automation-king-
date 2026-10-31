@@ -1,51 +1,49 @@
 'use client';
-import { useEffect, useState } from 'react';
-import { LOCALE_COOKIE, DEFAULT_LOCALE, type Locale, isLocale } from '@/lib/i18n';
 
-function readCookie(name: string): string | undefined {
-  if (typeof document === 'undefined') return undefined;
-  const m = document.cookie.match(new RegExp('(?:^|; )' + name + '=([^;]*)'));
-  return m ? decodeURIComponent(m[1]) : undefined;
-}
+import { type FormEvent } from 'react';
+import { DEFAULT_LOCALE, isLocale, t, type Locale } from '@/lib/i18n';
+import { useI18nContext } from './I18nContext';
 
 export function LanguageToggle({ locale = DEFAULT_LOCALE }: { locale?: Locale }) {
-  const [current, setCurrent] = useState<Locale>(locale);
+  const context = useI18nContext();
+  const current = context?.locale ?? locale;
 
-  useEffect(() => {
-    const v = readCookie(LOCALE_COOKIE);
-    setCurrent(isLocale(v) ? v : locale);
-  }, [locale]);
+  function handleSubmit(event: FormEvent<HTMLFormElement>) {
+    const form = event.currentTarget;
+    const formData = new FormData(form);
+    const selected = formData.get('locale');
+    if (context && typeof selected === 'string' && isLocale(selected)) {
+      event.preventDefault();
+      context.setLocale(selected);
+    }
+  }
 
   return (
     <form
       action="/api/set-locale"
       method="POST"
+      onSubmit={handleSubmit}
       className="flex items-center gap-1 text-[11px] font-semibold"
+      aria-label={t(locale, 'language')}
     >
       <button
         type="submit"
         name="locale"
         value="bn"
-        className={`px-1.5 py-0.5 rounded transition-colors ${
-          current === 'bn'
-            ? 'bg-white text-crimson'
-            : 'text-white/80 hover:text-white'
-        }`}
-        aria-label="বাংলা"
+        className={`rounded px-1.5 py-0.5 transition-colors ${current === 'bn' ? 'bg-white text-crimson' : 'text-white/80 hover:text-white'}`}
+        aria-label={t(locale, 'language_bengali')}
+        aria-pressed={current === 'bn'}
       >
         বাংলা
       </button>
-      <span className="text-white/40">|</span>
+      <span className="text-white/40" aria-hidden="true">|</span>
       <button
         type="submit"
         name="locale"
         value="en"
-        className={`px-1.5 py-0.5 rounded transition-colors ${
-          current === 'en'
-            ? 'bg-white text-crimson'
-            : 'text-white/80 hover:text-white'
-        }`}
-        aria-label="English"
+        className={`rounded px-1.5 py-0.5 transition-colors ${current === 'en' ? 'bg-white text-crimson' : 'text-white/80 hover:text-white'}`}
+        aria-label={t(locale, 'language_english')}
+        aria-pressed={current === 'en'}
       >
         EN
       </button>

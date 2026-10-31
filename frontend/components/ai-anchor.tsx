@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { HeroGlobe } from '@/components/canvas/HeroGlobe';
+import { t, type Locale } from '@/lib/i18n';
 
 /**
  * AINewsAnchor — a virtual news-anchor (HeyGen / D-ID style presenter) with
@@ -23,7 +24,7 @@ type AnchorScript = {
   body: string;
 };
 
-export function AINewsAnchor({ script, enable3d = true }: { script: AnchorScript; enable3d?: boolean }) {
+export function AINewsAnchor({ script, enable3d = true, locale = 'bn' }: { script: AnchorScript; enable3d?: boolean; locale?: Locale }) {
   const [state, setState] = useState<'idle' | 'loading' | 'speaking' | 'paused'>('idle');
   const [rate, setRate] = useState(1);
   const [voices, setVoices] = useState<SpeechSynthesisVoice[]>([]);
@@ -68,7 +69,7 @@ export function AINewsAnchor({ script, enable3d = true }: { script: AnchorScript
 
   const speakWithWebSpeech = () => {
     if (!supported) {
-      setError('এই ব্রাউজারে ভয়েস সাপোর্ট নেই।');
+      setError(t(locale, 'ai_anchor_voice_unavailable'));
       return;
     }
     const u = new SpeechSynthesisUtterance(fullText.replace(/\s+/g, ' ').slice(0, 4200));
@@ -116,10 +117,10 @@ export function AINewsAnchor({ script, enable3d = true }: { script: AnchorScript
       setState('speaking');
     } catch {
       if (supported) {
-        setError('ক্লাউড অডিও পাওয়া যায়নি — ব্রাউজারের ভয়েস ব্যবহার হচ্ছে।');
+        setError(t(locale, 'ai_anchor_cloud_fallback'));
         speakWithWebSpeech();
       } else {
-        setError('এই ব্রাউজারে ভয়েস সুবিধা নেই এবং ক্লাউড অডিও সাময়িকভাবে বন্ধ।');
+        setError(t(locale, 'ai_anchor_all_unavailable'));
         setState('idle');
       }
     }
@@ -169,14 +170,14 @@ export function AINewsAnchor({ script, enable3d = true }: { script: AnchorScript
           id="ai-anchor-heading"
           className="flex items-center gap-2 font-serifbn text-2xl font-extrabold tracking-tight text-ink dark:text-paper"
         >
-          <span aria-hidden>🎙️</span> AI নিউজ অ্যাংকর
+          <span aria-hidden>🎙️</span> {t(locale, 'ai_anchor_heading')}
         </h2>
         <span className="flex items-center gap-1.5 rounded-full bg-primary px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white">
           <span
             className={`h-1.5 w-1.5 rounded-full bg-white ${isActive ? 'animate-pulse' : ''}`}
             aria-hidden
           />
-          {isActive ? 'সম্প্রচার চলছে' : 'AI প্রেজেন্টার'}
+          {isActive ? t(locale, 'ai_anchor_live') : t(locale, 'ai_anchor_presenter')}
         </span>
       </div>
 
@@ -215,7 +216,7 @@ export function AINewsAnchor({ script, enable3d = true }: { script: AnchorScript
                 className={`h-1.5 w-1.5 rounded-full bg-white ${isActive ? 'animate-pulse' : ''}`}
                 aria-hidden
               />
-              {isActive ? 'LIVE' : 'AI'}
+              {isActive ? t(locale, 'ai_anchor_live_badge') : t(locale, 'ai_anchor_idle_badge')}
             </div>
             {/* waveform when speaking */}
             {isActive && (
@@ -252,7 +253,7 @@ export function AINewsAnchor({ script, enable3d = true }: { script: AnchorScript
             <button
               onClick={toggle}
               className="inline-flex h-11 items-center gap-2 rounded-full bg-primary px-5 text-sm font-bold text-white shadow-sm transition-transform hover:scale-105 active:scale-95"
-              aria-label={isActive ? 'বন্ধ করুন' : 'শুনুন'}
+              aria-label={isActive ? t(locale, 'ai_anchor_stop') : t(locale, 'ai_anchor_play')}
             >
               {state === 'loading' ? (
                 <span
@@ -269,20 +270,20 @@ export function AINewsAnchor({ script, enable3d = true }: { script: AnchorScript
                   <path d="M8 5v14l11-7z" />
                 </svg>
               )}
-              {isActive ? 'বন্ধ' : 'শুনুন'}
+              {isActive ? t(locale, 'ai_anchor_stop') : t(locale, 'ai_anchor_play')}
             </button>
 
             {state === 'speaking' && (
               <button
                 onClick={pause}
                 className="inline-flex h-11 items-center gap-2 rounded-full border border-border bg-muted px-5 text-sm font-semibold text-ink transition-colors hover:bg-muted/70 dark:border-white/10 dark:bg-neutral-800 dark:text-paper"
-                aria-label="বিরতি"
+                aria-label={t(locale, 'ai_anchor_pause')}
               >
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
                   <rect x="6" y="5" width="4" height="14" rx="1" />
                   <rect x="14" y="5" width="4" height="14" rx="1" />
                 </svg>
-                বিরতি
+                {t(locale, 'ai_anchor_pause')}
               </button>
             )}
 
@@ -297,7 +298,7 @@ export function AINewsAnchor({ script, enable3d = true }: { script: AnchorScript
                       ? 'bg-ink text-paper dark:bg-paper dark:text-ink'
                       : 'text-neutral-500 hover:text-ink dark:hover:text-paper'
                   }`}
-                  aria-label={`গতি ${r}×`}
+                  aria-label={t(locale, 'ai_anchor_speed').replace('{speed}', String(r))}
                 >
                   {r}×
                 </button>
@@ -306,7 +307,7 @@ export function AINewsAnchor({ script, enable3d = true }: { script: AnchorScript
           </div>
 
           <p className="mt-4 text-[11px] text-neutral-500">
-            বাংলা টেক্সট-টু-স্পিচ
+            {t(locale, 'ai_anchor_tts')}
           </p>
         </div>
       </div>

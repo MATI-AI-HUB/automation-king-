@@ -2,6 +2,7 @@
 
 import { useEffect } from 'react';
 import { useClientLocale } from '@/lib/use-client-locale';
+import { t } from '@/lib/i18n';
 
 /**
  * ErrorBoundary (route-level) — Banglar Voice.
@@ -30,19 +31,17 @@ export default function Error({
           ⚠️
         </div>
         <h1 className="mb-3 text-2xl font-bold tracking-tight text-[#0F0F0F]">
-          {locale === 'en' ? 'Something went wrong' : 'কিছু ভুল হয়েছে'}
+          {t(locale, 'error_title')}
         </h1>
         <p className="mb-6 text-sm leading-relaxed text-black/60">
-          {locale === 'en'
-            ? 'We could not load this page. Try again, or come back in a little while.'
-            : 'পৃষ্ঠাটি লোড করতে সমস্যা হয়েছে। আবার চেষ্টা করুন, অথবা কিছুক্ষণ পর দেখুন।'}
+          {t(locale, 'error_body')}
         </p>
         <button
           type="button"
           onClick={reset}
           className="rounded-full bg-[#CC0000] px-6 py-2.5 text-sm font-semibold text-white transition hover:bg-[#CC0000]/90 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#CC0000] focus-visible:ring-offset-2"
         >
-          {locale === 'en' ? 'Try again' : 'আবার চেষ্টা করুন'}
+          {t(locale, 'error_retry')}
         </button>
       </div>
     </main>

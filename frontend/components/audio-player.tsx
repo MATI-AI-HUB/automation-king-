@@ -89,7 +89,7 @@ export function AudioPlayerWidget({ text, title, locale = 'bn' }: { text: string
       };
       audio.onerror = () => {
         setSpeaking(false);
-        setError('অডিও চালানো যায়নি। পরে আবার চেষ্টা করুন।');
+        setError(t(locale, 'audio_error_playback'));
         if (remoteUrlRef.current) URL.revokeObjectURL(remoteUrlRef.current);
         remoteUrlRef.current = null;
       };
@@ -98,7 +98,7 @@ export function AudioPlayerWidget({ text, title, locale = 'bn' }: { text: string
       setSpeaking(true);
     } catch {
       setSpeaking(false);
-      setError('এই ডিভাইসে ভয়েস সুবিধা নেই বা অডিও সেবা সাময়িকভাবে বন্ধ।');
+      setError(t(locale, 'audio_error_unavailable'));
     }
   };
 
@@ -181,6 +181,7 @@ export function AudioPlayerWidget({ text, title, locale = 'bn' }: { text: string
           {[0.75, 1, 1.25].map((r) => (
             <button
               key={r}
+              aria-label={t(locale, 'audio_speed_aria').replace('{speed}', String(r))}
               onClick={() => {
                 setRate(r);
                 if (speaking) {
@@ -204,7 +205,7 @@ export function AudioPlayerWidget({ text, title, locale = 'bn' }: { text: string
         <button
           onClick={stop}
           className="shrink-0 rounded-full p-2 text-neutral-400 hover:bg-muted hover:text-neutral-600 dark:hover:bg-neutral-800"
-          aria-label="বন্ধ"
+          aria-label={t(locale, 'audio_close_aria')}
         >
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M18 6 6 18M6 6l12 12"/></svg>
         </button>

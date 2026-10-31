@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import { youtubeHqThumbnail } from '../lib/video-thumbnail';
+import { t, type Locale } from '../lib/i18n';
 
 export type VideoItem = {
   id?: string;
@@ -18,6 +19,12 @@ export type VideoItem = {
   view_count?: number;
   published_at?: string;
 };
+
+function getVideoTitle(video: VideoItem | undefined, locale: Locale): string {
+  const localized = locale === 'en' ? video?.title_en?.trim() : video?.title_bn?.trim();
+  const fallback = locale === 'en' ? video?.title_bn?.trim() : video?.title_en?.trim();
+  return localized || fallback || t(locale, 'video_default_title');
+}
 
 /**
  * Zero-CLS thumbnail: gradient art when no image is available. A broken
@@ -51,8 +58,9 @@ function Thumb({ src, fallbackSrc, alt }: { src?: string; fallbackSrc?: string; 
 }
 
 /** Privacy-friendly, click-to-play YouTube (nocookie) / iframe player. */
-function Player({ video }: { video?: VideoItem }) {
+function Player({ video, locale }: { video?: VideoItem; locale: Locale }) {
   const [playing, setPlaying] = useState(false);
+  const title = getVideoTitle(video, locale);
 
   if (!video) {
     return (
@@ -71,7 +79,7 @@ function Player({ video }: { video?: VideoItem }) {
   if (!src) {
     return (
       <div className="relative overflow-hidden rounded-2xl border border-white/10">
-        <Thumb src={poster} fallbackSrc={posterFallback} alt={video.title_bn || 'ভিডিও'} />
+        <Thumb src={poster} fallbackSrc={posterFallback} alt={title} />
       </div>
     );
   }
@@ -81,10 +89,10 @@ function Player({ video }: { video?: VideoItem }) {
       <button
         type="button"
         onClick={() => setPlaying(true)}
-        aria-label={video.title_bn ? `${video.title_bn} — ভিডিও চালান` : 'ভিডিও চালান'}
+        aria-label={`${title} — ${t(locale, 'video_play')}`}
         className="group relative block aspect-video w-full overflow-hidden rounded-2xl border border-white/10 bg-black"
       >
-        <Thumb src={poster} fallbackSrc={posterFallback} alt={video.title_bn || 'ভিডিও'} />
+        <Thumb src={poster} fallbackSrc={posterFallback} alt={title} />
         <span className="absolute inset-0 grid place-items-center bg-black/20 transition-colors group-hover:bg-black/40">
           <span className="grid h-16 w-16 place-items-center rounded-full bg-black/60 text-white shadow-lg ring-2 ring-white/70 transition-transform group-hover:scale-110 group-hover:bg-[#CC0000]">
             <svg width="26" height="26" viewBox="0 0 24 24" fill="currentColor" aria-hidden>
@@ -101,7 +109,7 @@ function Player({ video }: { video?: VideoItem }) {
       <iframe
         key={video.id || src}
         src={src}
-        title={video.title_bn || 'ভিডিও'}
+        title={title}
         allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
         allowFullScreen
         loading="lazy"
@@ -116,7 +124,7 @@ function Player({ video }: { video?: VideoItem }) {
  * Sorted so live items surface first; the first item renders as a
  * feature with a prominent "লাইভ" badge.
  */
-export function VideoHub({ videos }: { videos: VideoItem[] }) {
+export function VideoHub({ videos, locale = 'bn' }: { videos: VideoItem[]; locale?: Locale }) {
   const ordered = useMemo(() => {
     const list = [...videos];
     list.sort((a, b) => Number(b?.is_live ?? false) - Number(a?.is_live ?? false));
@@ -162,7 +170,19 @@ export function VideoHub({ videos }: { videos: VideoItem[] }) {
   }, [liveVideo, ordered, resolvedFallback]);
   const feature = active ?? liveVideo ?? ordered[0] ?? resolvedFallback;
 
-  if (!feature) return null;
+  if (!feature) {
+    return (
+      <section id="live" aria-labelledby="videohub-heading" className="my-14 overflow-hidden rounded-3xl bg-neutral-950 p-5 text-white md:p-8">
+        <div className="mb-5 flex items-center justify-between gap-3">
+          <h2 id="videohub-heading" className="flex items-center gap-2 font-serifbn text-2xl font-extrabold tracking-tight">
+            <span aria-hidden>🎬</span> {t(locale, 'video_heading')}
+          </h2>
+          <span className="rounded-full border border-white/20 px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white/70">{t(locale, 'video_hub_badge')}</span>
+        </div>
+        <p role="status" className="rounded-xl bg-white/5 p-5 text-sm text-white/70">{t(locale, 'video_no_videos')}</p>
+      </section>
+    );
+  }
 
   return (
     <section
@@ -172,11 +192,11 @@ export function VideoHub({ videos }: { videos: VideoItem[] }) {
     >
       <div className="mb-5 flex items-center justify-between gap-3">
         <h2 id="videohub-heading" className="flex items-center gap-2 font-serifbn text-2xl font-extrabold tracking-tight">
-          <span aria-hidden>🎬</span> ভিডিও ও পডকাস্ট
+          <span aria-hidden>🎬</span> {t(locale, 'video_heading')}
         </h2>
         <span className="flex items-center gap-1.5 rounded-full bg-[#CC0000] px-3 py-1 text-[10px] font-bold uppercase tracking-widest text-white">
           <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" aria-hidden />
-          লাইভ হাব
+          {t(locale, liveVideo ? 'video_live_badge' : 'video_hub_badge')}
         </span>
       </div>
 
@@ -184,18 +204,18 @@ export function VideoHub({ videos }: { videos: VideoItem[] }) {
         {/* Feature player */}
         <div className="lg:col-span-3">
           <div className="relative">
-            <Player key={feature?.id ?? feature?.youtube_id ?? 'feature'} video={feature} />
+            <Player key={feature?.id ?? feature?.youtube_id ?? 'feature'} video={feature} locale={locale} />
             {feature?.is_live && (
               <span className="absolute left-3 top-3 z-10 flex items-center gap-1.5 rounded bg-[#CC0000] px-2 py-1 text-[10px] font-extrabold uppercase tracking-widest">
                 <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" aria-hidden />
-                Live
+                {t(locale, 'video_live_badge')}
               </span>
             )}
           </div>
           <h3 className="mt-3 font-serifbn text-lg font-bold leading-snug md:text-xl">
-            {feature?.title_bn || 'লাইভ সম্প্রচার'}
+            {getVideoTitle(feature, locale)}
           </h3>
-          {feature?.title_en && (
+          {locale === 'bn' && feature?.title_en && (
             <p className="mt-1 text-xs uppercase tracking-widest text-white/40">{feature.title_en}</p>
           )}
         </div>
@@ -204,7 +224,7 @@ export function VideoHub({ videos }: { videos: VideoItem[] }) {
         <div className="flex flex-col gap-2 lg:col-span-2">
           {playlist.map((v) => {
             const isActive =
-              feature?.id === v.id && feature?.title_bn === v.title_bn;
+              (feature?.id ?? feature?.youtube_id ?? feature?.title_bn) === (v.id ?? v.youtube_id ?? v.title_bn);
             return (
               <button
                 key={v.id ?? v.title_bn ?? v.embed_url}
@@ -220,17 +240,17 @@ export function VideoHub({ videos }: { videos: VideoItem[] }) {
                     key={v.id ?? v.title_bn ?? v.embed_url}
                     src={v.thumbnail_url}
                     fallbackSrc={youtubeHqThumbnail(v.youtube_id)}
-                    alt={v.title_bn || ''}
+                    alt={getVideoTitle(v, locale)}
                   />
                 </div>
                 <div className="min-w-0">
                   {v.is_live && (
                     <span className="mb-1 inline-block rounded bg-[#CC0000] px-1.5 py-0.5 text-[8px] font-extrabold uppercase tracking-widest">
-                      Live
+                      {t(locale, 'video_live_badge')}
                     </span>
                   )}
                   <h4 className="line-clamp-2 text-sm font-semibold leading-snug text-white/90">
-                    {v.title_bn}
+                    {getVideoTitle(v, locale)}
                   </h4>
                 </div>
               </button>

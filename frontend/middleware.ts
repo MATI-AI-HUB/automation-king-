@@ -1,6 +1,7 @@
 import { createServerClient } from '@supabase/ssr'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
+import { isV2RedesignEnabled, V2_REDESIGN_COOKIE, V2_REDESIGN_HEADER } from './lib/feature-flags'
 
 const ALLOWED_ROLES = ['admin', 'chief_editor', 'desk_editor']
 
@@ -9,6 +10,12 @@ export async function middleware(request: NextRequest) {
   const requestHeaders = new Headers(request.headers)
   requestHeaders.delete('x-deployment-id')
   requestHeaders.delete('x-ff-3d-visuals')
+  requestHeaders.delete(V2_REDESIGN_HEADER)
+  const redesignFlag = request.cookies.get(V2_REDESIGN_COOKIE)?.value
+  const isPublicPage = !path.startsWith('/api/') && path !== '/api' && path !== '/admin' && !path.startsWith('/admin/')
+  if (isPublicPage && isV2RedesignEnabled(redesignFlag)) {
+    requestHeaders.set(V2_REDESIGN_HEADER, 'true')
+  }
   const deploymentId = process.env.VERCEL_DEPLOYMENT_ID
   const visualsFlag = request.cookies.get('ff_3d_visuals')?.value
   if (deploymentId) requestHeaders.set('x-deployment-id', deploymentId)

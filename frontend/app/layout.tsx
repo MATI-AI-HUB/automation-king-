@@ -1,8 +1,10 @@
 import type { Metadata, Viewport } from 'next';
 import '@/styles/globals.css';
 import { notoSerifBengali, hindSiliguri, inter } from '@/lib/fonts';
-import { cookies } from 'next/headers';
+import { cookies, headers } from 'next/headers';
 import { LOCALE_COOKIE, getLocaleFromCookie } from '@/lib/i18n';
+import { I18nProvider, type Currency } from '@/components/I18nContext';
+import { V2_REDESIGN_HEADER } from '@/lib/feature-flags';
 import { Header } from '@/components/Header';
 import { Footer } from '@/components/Footer';
 import { CookieBanner } from '@/components/CookieBanner';
@@ -48,7 +50,10 @@ export default async function RootLayout({
   children: React.ReactNode;
 }) {
   const cookieStore = await cookies();
+  const requestHeaders = await headers();
   const locale = getLocaleFromCookie(cookieStore.get(LOCALE_COOKIE)?.value);
+  const initialCurrency: Currency = cookieStore.get('bv_currency')?.value === 'USD' ? 'USD' : 'BDT';
+  const redesignEnabled = requestHeaders.get(V2_REDESIGN_HEADER) === 'true';
   const savedTheme = cookieStore.get('bv-theme')?.value;
   return (
     <html lang={locale} className={savedTheme === 'dark' ? 'dark' : undefined} suppressHydrationWarning>
@@ -61,12 +66,14 @@ export default async function RootLayout({
       <body
         className={`${notoSerifBengali.variable} ${hindSiliguri.variable} ${inter.variable} bg-paper font-sansbn text-ink antialiased min-h-screen flex flex-col`}
       >
-        <PlausibleAnalytics />
-        <Header locale={locale} />
-        <main className="flex-1">{children}</main>
-        <Footer locale={locale} />
-        <CookieBanner locale={locale} />
-        <LearningHub locale={locale} />
+        <I18nProvider initialLocale={locale} initialCurrency={initialCurrency}>
+          <PlausibleAnalytics />
+          <Header locale={locale} redesignEnabled={redesignEnabled} />
+          <main className="flex-1">{children}</main>
+          <Footer locale={locale} />
+          <CookieBanner locale={locale} />
+          <LearningHub locale={locale} />
+        </I18nProvider>
       </body>
     </html>
   );

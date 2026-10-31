@@ -34,7 +34,7 @@ export default async function SearchPage({ searchParams }: PageProps) {
 
   return (
     <main className="mx-auto max-w-6xl px-4 py-10">
-      <h1 className="font-serifbn text-2xl font-extrabold">{t(locale, 'search_placeholder')}</h1>
+      <h1 className="font-serifbn text-2xl font-extrabold">{t(locale, 'search')}</h1>
       <form action="/search" method="get" className="mt-4 flex gap-2" role="search">
         <label htmlFor="q" className="sr-only">
           {t(locale, 'search_placeholder')}
@@ -47,12 +47,12 @@ export default async function SearchPage({ searchParams }: PageProps) {
           className="w-full rounded-full border border-border bg-white px-4 py-2 text-sm dark:border-white/15 dark:bg-neutral-900"
         />
         <button type="submit" className="rounded-full bg-crimson px-5 py-2 text-sm font-bold text-white">
-          {locale === 'en' ? 'Search' : 'খুঁজুন'}
+          {t(locale, 'search_submit')}
         </button>
       </form>
-      {!query && <p className="mt-6 text-neutral-500">{locale === 'en' ? 'Enter a word or phrase to search.' : 'একটি শব্দ লিখে খুঁজুন।'}</p>}
+      {!query && <p className="mt-6 text-neutral-500">{t(locale, 'search_prompt')}</p>}
       {query && hits.length === 0 && (
-        <p className="mt-6 text-neutral-500">{locale === 'en' ? 'No results found.' : 'কোনো ফলাফল নেই।'}</p>
+        <p className="mt-6 text-neutral-500">{t(locale, 'search_no_results')}</p>
       )}
       <div className="mt-8 grid grid-cols-1 gap-5 sm:grid-cols-2 lg:grid-cols-3">
         {hits.map((a) => (
