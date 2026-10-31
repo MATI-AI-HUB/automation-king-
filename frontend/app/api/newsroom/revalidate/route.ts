@@ -1,5 +1,6 @@
 import { revalidatePath, revalidateTag } from 'next/cache';
-import { NextResponse } from 'next/server';
+import { after, NextResponse } from 'next/server';
+import { sendManagerShadowEvent } from '../../../../lib/manager-shadow';
 import { categorySlug, isKnownCategorySlug } from '../../../../lib/category';
 import {
   extractProvidedKey,
@@ -97,6 +98,11 @@ export async function POST(req: Request) {
 
   for (const path of paths) revalidatePath(path);
   revalidateTag('articles');
+
+  // Run after the response so shadow delivery cannot delay or break revalidation.
+  after(async () => {
+    await sendManagerShadowEvent(record, isPublished ? 'article.published' : 'article.unpublished');
+  });
 
   return json({
     ok: true,
